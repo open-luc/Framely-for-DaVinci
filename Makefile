@@ -6,12 +6,13 @@ ARCHS    ?= -arch arm64
 CXXFLAGS := -std=c++17 -O3 -fvisibility=hidden -I$(SDK)/include -I$(SUP)/include -I$(SUP)/Plugins/include -Isrc $(ARCHS) -mmacosx-version-min=11.0 -DGL_SILENCE_DEPRECATION -Wno-deprecated-declarations
 LDFLAGS  := -bundle -framework OpenGL $(ARCHS) -mmacosx-version-min=11.0
 SUPSRC   := $(addprefix $(SUP)/Library/,ofxsCore.cpp ofxsImageEffect.cpp ofxsInteract.cpp ofxsLog.cpp ofxsMultiThread.cpp ofxsParams.cpp ofxsProperty.cpp ofxsPropertyValidation.cpp)
-SUPOBJ   := $(patsubst $(SUP)/Library/%.cpp,build/sup/%.o,$(SUPSRC))
+B        ?= build
+SUPOBJ   := $(patsubst $(SUP)/Library/%.cpp,$(B)/sup/%.o,$(SUPSRC))
 
 all: framely
 
-build/sup/%.o: $(SUP)/Library/%.cpp
-	@mkdir -p build/sup
+$(B)/sup/%.o: $(SUP)/Library/%.cpp
+	@mkdir -p $(B)/sup
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # ---- probe ----
@@ -24,7 +25,7 @@ $(PROBE)/Contents/MacOS/FramelyProbe.ofx: probe/Probe.cpp $(SUPOBJ)
 	codesign --force -s - $(PROBE)
 
 # ---- Framely ----
-FR := build/Framely.ofx.bundle
+FR := $(B)/Framely.ofx.bundle
 framely: $(FR)/Contents/MacOS/Framely.ofx
 $(FR)/Contents/MacOS/Framely.ofx: src/FramelyPlugin.cpp src/FramelyCore.h $(SUPOBJ)
 	@mkdir -p $(FR)/Contents/MacOS
@@ -41,7 +42,15 @@ build/harness-bin: tools/harness.cpp src/FramelyCore.h
 	@mkdir -p build
 	$(CXX) -std=c++17 -O2 -Isrc tools/harness.cpp -lz -o $@
 
+# Universal (arm64 + x86_64) release zip in dist/
+dist:
+	$(MAKE) B=build/universal ARCHS="-arch arm64 -arch x86_64" framely
+	@mkdir -p dist
+	rm -f dist/Framely-macOS.zip
+	cd build/universal && ditto -c -k --keepParent Framely.ofx.bundle ../../dist/Framely-macOS.zip
+	@echo built dist/Framely-macOS.zip
+
 clean:
 	rm -rf build
 
-.PHONY: all probe framely install harness clean
+.PHONY: all probe framely install harness dist clean

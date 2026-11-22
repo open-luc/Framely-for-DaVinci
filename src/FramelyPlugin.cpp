@@ -470,7 +470,6 @@ public:
     std::map<std::string, int> lastBasis;
     void changedParam(const InstanceChangedArgs& args, const std::string& name) override {
         flog("changedParam %s reason=%d", name.c_str(), (int)args.reason);
-        if (args.reason == eChangeUserEdit && !inChange) pinAll("first user edit");
         const bool isBasis = name == "bSize" || name == "bCrop" || name == "bShape" || name == "bBorder" || name == "bShadow";
         if (inChange || args.reason != eChangeUserEdit) {
             // our own or host edits (resets, undo): remember the basis so the next user switch converts from the right units
