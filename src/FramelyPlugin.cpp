@@ -28,7 +28,7 @@ using namespace OFX;
 using framely::Settings;
 using framely::Geom;
 
-#define FRAMELY_VERSION "0.1.1"
+#define FRAMELY_VERSION "0.1.2"
 
 // ============================================================ logging
 static std::string homeDir() { const char* h = getenv("HOME"); return h ? h : "/tmp"; }
