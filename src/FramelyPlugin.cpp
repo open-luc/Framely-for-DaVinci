@@ -264,10 +264,13 @@ public:
             }
         }
         initialized = fetchBooleanParam("initialized");
+        flog("createInstance: pinStamp=%.0f initialized=%d corner=%.2f borderOn=%d | cropL=%g cropR=%g cropT=%g cropB=%g panX=%g panY=%g zoom=%g shDist=%g shSoft=%g", (int)initialized->getValue(), dp("corner")->getValue(), (int)bp("borderOn")->getValue(),
+             dp("cropL")->getValue(), dp("cropR")->getValue(), dp("cropT")->getValue(), dp("cropB")->getValue(), dp("panX")->getValue(), dp("panY")->getValue(), dp("zoom")->getValue(), dp("shDist")->getValue(), dp("shSoft")->getValue());
+
         // A brand-new copy of the effect starts from the saved default (the file may be newer than this Resolve session's describe).
         if (!initialized->getValue()) {
             inChange = true;
-            Values v; if (loadSaved(v)) applyValues(v, false);
+            Values v; if (loadSaved(v)) { applyValues(v, false); pending = true; }
             initialized->setValue(true);
             inChange = false;
         }
@@ -351,7 +354,8 @@ public:
         p.setRenderWindow(args.renderWindow);
         p.process();
     }
-    bool isIdentity(const IsIdentityArguments&, Clip*&, double&) override { return false; }
+    bool isIdentity(const IsIdentityArguments&, Clip*&, double&) override {
+        return false; }
 
     // ---------------- values in/out
     Values readValues() {
@@ -465,6 +469,8 @@ public:
 
     std::map<std::string, int> lastBasis;
     void changedParam(const InstanceChangedArgs& args, const std::string& name) override {
+        flog("changedParam %s reason=%d", name.c_str(), (int)args.reason);
+        if (args.reason == eChangeUserEdit && !inChange) pinAll("first user edit");
         const bool isBasis = name == "bSize" || name == "bCrop" || name == "bShape" || name == "bBorder" || name == "bShadow";
         if (inChange || args.reason != eChangeUserEdit) {
             // our own or host edits (resets, undo): remember the basis so the next user switch converts from the right units
@@ -512,7 +518,26 @@ public:
         } catch (...) { inChange = false; throw; }
         inChange = false;
     }
-    void syncPrivateData() override {}
+    // Resolve only saves values it saw change through its own UI flow (verified 2026-11-21: values set in
+    // createInstance/getClipPreferences/instanceChanged-from-createInstance were NOT saved). So values applied from the
+    // saved default are applied again ("pinned") at the first moment the user works with this copy of the effect.
+    bool pending = false;
+    void pinAll(const char* why) {
+        if (!pending) return;
+        pending = false;
+        bool was = inChange; inChange = true;
+        try {
+            Values v; if (loadSaved(v)) for (auto& d : PARAMS()) { auto it = v.find(d.name); if (it != v.end() && d.kind != kButton) setOne(d, it->second); }
+            initialized->setValue(true);
+            dp("pinStamp")->setValue((double)time(nullptr));
+            flog("pinAll(%s) done", why);
+        } catch (...) { flog("pinAll(%s) threw", why); }
+        inChange = was;
+    }
+    void beginEdit() override { flog("beginEdit (UI opened)"); pinAll("beginEdit"); }
+    void endEdit() override { flog("endEdit"); }
+    void syncPrivateData() override {
+        flog("syncPrivateData: corner=%.2f borderOn=%d", dp("corner")->getValue(), (int)bp("borderOn")->getValue()); }
 };
 
 // ============================================================ viewer overlay: guides + dragging
@@ -554,6 +579,7 @@ public:
     }
 
     bool draw(const DrawArgs& a) override {
+        static int nd = 0; if (nd++ < 3) flog("overlay draw: drawContext=%p suite=%p", a.drawContext, (void*)gDraw);
         if (!gDraw || !a.drawContext) return false;
         const double t = a.time;
         if (!fx->bv("guides", t)) return true;
@@ -634,6 +660,8 @@ public:
         double slack = 10 * a.pixelScale.x;
         if (framely::sdRRect(G.shape, px, py) > slack) return false;
         dragImage = (fx->ci("dragMode", a.time) == 1) != altDown;
+        flog("penDown: drag %s", dragImage ? "image" : "picture");
+        fx->pinAll("penDown");
         start = a.penPosition; dragging = true;
         if (dragImage) { s0 = fx->dv("panX", a.time); s1 = fx->dv("panY", a.time); }
         else { s0 = fx->dv("posX", a.time); s1 = fx->dv("posY", a.time); }
@@ -735,6 +763,9 @@ void FramelyFactory::describeInContext(ImageEffectDescriptor& desc, ContextEnum)
         }
         page->addChild(*pd);
     }
+    DoubleParamDescriptor* pin = desc.defineDoubleParam("pinStamp");
+    pin->setDefault(0); pin->setIsSecret(true); pin->setAnimates(false); pin->setLabel("pinStamp"); pin->setRange(0, 1e12); pin->setDisplayRange(0, 1e12);
+    page->addChild(*pin);
     BooleanParamDescriptor* init = desc.defineBooleanParam("initialized");
     init->setDefault(false); init->setIsSecret(true); init->setAnimates(false); init->setLabel("initialized");
     page->addChild(*init);
