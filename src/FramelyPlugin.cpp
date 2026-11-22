@@ -10,6 +10,7 @@
 #include <mutex>
 #include <memory>
 #include <thread>
+#include <chrono>
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h>
@@ -18,7 +19,7 @@
 #include "ofxsImageEffect.h"
 #include "ofxsInteract.h"
 #include "ofxsMultiThread.h"
-#include "ofxsProcessing.H"
+#include "ofxsProcessing.h"
 #include "ofxDrawSuite.h"
 #include "FramelyCore.h"
 #include "FramelyUpdate.h"
@@ -27,7 +28,7 @@ using namespace OFX;
 using framely::Settings;
 using framely::Geom;
 
-#define FRAMELY_VERSION "0.1.0"
+#define FRAMELY_VERSION "0.1.1"
 
 // ============================================================ logging
 static std::string homeDir() { const char* h = getenv("HOME"); return h ? h : "/tmp"; }
@@ -433,7 +434,7 @@ public:
         dp("customW")->setIsSecret(!(guides && custom)); dp("customH")->setIsSecret(!(guides && custom));
         dp("corner")->setLabel(ci("bShape", 0) == 0 ? "Corner Size" : "Roundness");
     }
-    void updateRanges() {
+    void updateRanges(bool clamp = true) {
         for (auto& d : PARAMS()) {
             if (d.kind != kDouble || !d.basisGroup) continue;
             bool screen = ci(d.basisGroup, 0) == 0;
@@ -446,8 +447,8 @@ public:
             double hy = std::max(.5, (100 - dp("safeT")->getValue() - dp("safeB")->getValue()) / 2);
             dp("posX")->setRange(-hx, hx); dp("posX")->setDisplayRange(-hx, hx);
             dp("posY")->setRange(-hy, hy); dp("posY")->setDisplayRange(-hy, hy);
-            if (dp("posX")->getNumKeys() == 0) { double v = dp("posX")->getValue(); if (std::fabs(v) > hx) dp("posX")->setValue(framely::clampd(v, -hx, hx)); }
-            if (dp("posY")->getNumKeys() == 0) { double v = dp("posY")->getValue(); if (std::fabs(v) > hy) dp("posY")->setValue(framely::clampd(v, -hy, hy)); }
+            if (clamp && dp("posX")->getNumKeys() == 0) { double v = dp("posX")->getValue(); if (std::fabs(v) > hx) dp("posX")->setValue(framely::clampd(v, -hx, hx)); }
+            if (clamp && dp("posY")->getNumKeys() == 0) { double v = dp("posY")->getValue(); if (std::fabs(v) > hy) dp("posY")->setValue(framely::clampd(v, -hy, hy)); }
         } else {
             dp("posX")->setRange(-100, 100); dp("posX")->setDisplayRange(-100, 100);
             dp("posY")->setRange(-100, 100); dp("posY")->setDisplayRange(-100, 100);
@@ -498,6 +499,18 @@ public:
     }
 
     std::map<std::string, int> lastBasis;
+
+    // ---- Paste guard. Resolve applies Paste Attributes (and its whole-effect reset) as a quick run of separate
+    // "user edits", one per value. Our reactions to a single edit (converting a section to new units when its
+    // "Measured from" changes, tidying the pan, keeping Position inside the safe area) would rewrite values the same
+    // paste sets, so the copy wouldn't match. Each reaction therefore remembers the values just before it; when another
+    // edit follows within a moment, it was a bulk change: the reaction is undone and nothing reacts until it ends.
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point lastEditAt{};
+    std::string lastEditName;
+    Values beforeReaction; bool reacted = false, bulk = false;
+    static bool isButton(const std::string& n) { const PDef* d = findDef(n.c_str()); return d && d->kind == kButton; }
+
     void changedParam(const InstanceChangedArgs& args, const std::string& name) override {
         flog("changedParam %s reason=%d", name.c_str(), (int)args.reason);
         const bool isBasis = name == "bSize" || name == "bCrop" || name == "bShape" || name == "bBorder" || name == "bShadow";
@@ -506,6 +519,43 @@ public:
             if (isBasis) lastBasis[name] = ci(name.c_str(), args.time);
             if (!inChange && (isBasis || name == "safeOn" || name == "guides" || name == "gCustom")) { inChange = true; updateRanges(); updateVisibility(); inChange = false; }
             return;
+        }
+        if (!isButton(name)) {
+            auto now = Clock::now();
+            bool quick = lastEditAt != Clock::time_point{} && now - lastEditAt < std::chrono::milliseconds(300) && name != lastEditName;
+            lastEditAt = now; lastEditName = name;
+            if (quick) {
+                inChange = true;
+                try {
+                    if (!bulk) {
+                        bulk = true;
+                        int undone = 0;
+                        if (reacted)
+                            for (auto& d : PARAMS()) {
+                                if (d.kind == kButton || name == d.name) continue;
+                                auto it = beforeReaction.find(d.name);
+                                if (it == beforeReaction.end()) continue;
+                                std::vector<double> cur;
+                                switch (d.kind) {
+                                    case kDouble: cur = {dp(d.name)->getValue()}; break;
+                                    case kBool: cur = {bp(d.name)->getValue() ? 1.0 : 0.0}; break;
+                                    case kChoice: { int c; cp(d.name)->getValue(c); cur = {(double)c}; break; }
+                                    case kRGB: { double r, g, b; rp(d.name)->getValue(r, g, b); cur = {r, g, b}; break; }
+                                    default: break;
+                                }
+                                if (cur != it->second) { setOne(d, it->second); undone++; }
+                            }
+                        flog("bulk change (paste/reset) detected at %s: undid %d value(s) changed by the previous reaction", name.c_str(), undone);
+                    }
+                    reacted = false;
+                    for (const char* b : BASIS_NAMES) lastBasis[b] = ci(b, args.time);
+                    updateMeasureFrom(); updateRanges(false); updateVisibility();
+                } catch (...) { inChange = false; throw; }
+                inChange = false;
+                return;
+            }
+            bulk = false;
+            beforeReaction = readValues(); reacted = true;
         }
         inChange = true;
         const double t = args.time;

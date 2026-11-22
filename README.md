@@ -17,7 +17,7 @@ It's a picture-in-picture that behaves predictably:
 - **Save as Default / Reset to Default** at the top, a reset button per section, and Resolve's ↺ per value.
 - Drag the picture in the viewer (OpenFX Overlay); hold Option to pan the image inside.
 
-> **Alpha.** Version 0.1.0 is the first public build. Expect rough edges; please report issues.
+> **Alpha.** This is an early public build (see Releases for the current version). Expect rough edges; please report issues.
 
 ## Install (macOS)
 
@@ -57,6 +57,16 @@ make harness    # command-line renderer used for tests
   original interactive spec on 400 random cases (`tools/mockcheck/mockgeom.js`, run with Deno).
 - `tools/harness.cpp` renders the same maths to PNG. Frames rendered by Resolve itself (render queue, PNG) are compared
   pixel by pixel with the harness: 9 setting presets × portrait/square/landscape × 4K/HD/vertical (`tools/compare.py`).
+
+## Known issues (alpha)
+
+- After you change the viewer zoom, Resolve sometimes keeps drawing the guides at the old zoom (too big, Centre marker in
+  the wrong place). Resizing the viewer, or changing the zoom again, redraws them correctly. The plugin draws in the
+  coordinates Resolve gives it, so this looks like a Resolve issue (still investigating).
+- Resolve doesn't tell plugins when you open or close a section, so sections can't remember your last choice between
+  clips. Guides starts collapsed; the rest start open.
+- A copy of the effect you never touch follows a later change of your saved default after Resolve restarts. Touch any
+  setting to lock a clip.
 
 ## Notes
 
