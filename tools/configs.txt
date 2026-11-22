@@ -1,0 +1,8 @@
+# name | plugin params (defaults-file names). Used by tools/resolve_batch + tools/compare.py
+factory |
+styled | corner=30 borderOn=1 borderW=1.5 shadowOn=1 shDist=2 shSoft=4 shOp=80
+outside | corner=100 borderOn=1 borderPos=1 borderW=3 shadowOn=1 shOp=80 shDist=3 shSoft=6 shSize=2 posX=15 posY=-10 size=60
+crop | cropL=20 cropT=10 zoom=150 panX=10 panY=-5 corner=20 size=60 posX=-20 posY=10 circle=40
+fitbox | measureFrom=0 bSize=0 bCrop=0 bShape=0 bBorder=0 bShadow=0 boxW=30 boxH=40 posX=25 borderOn=1 borderW=0.5 corner=3
+safe | safeOn=1 safeT=10 safeB=20 safeL=5 safeR=30 size=120 posX=40 borderOn=1 borderPos=1 borderW=2
+circle | circle=100 borderOn=1 borderW=2 borderColor=1,0.8,0.2 size=50
