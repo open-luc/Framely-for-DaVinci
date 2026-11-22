@@ -247,6 +247,17 @@ inline void shadePixel(const RenderPlan& P, const SrcView& src, int x, int y, fl
     out[0] = out[1] = out[2] = out[3] = 0;
     if (x < P.bbX1 || x >= P.bbX2 || y < P.bbY1 || y >= P.bbY2) return;
     const double px = x + 0.5, py = P.FHpx - (y + 0.5);    // y-down screen position (output px)
+    // Fast path: well inside the picture (and inside any inside-border ring) with an opaque image pixel,
+    // nothing underneath can show, so skip shadow/border maths. Same result as the full path.
+    if (sdRRect(P.shape, px, py) < -1 && (!(P.borderOn && !P.outside) || (P.inner.valid && sdRRect(P.inner, px, py) < -1))
+        && P.content.w > 0 && P.content.h > 0) {
+        double u = (px - P.content.x) / P.content.w, v = (py - P.content.y) / P.content.h;
+        if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
+            float img[4];
+            sampleBilinear(src, P.srcX1 + u * (P.srcX2 - P.srcX1), P.srcY2 - v * (P.srcY2 - P.srcY1), P.srcX1, P.srcY1, P.srcX2, P.srcY2, img);
+            if (img[3] >= 0.9999f) { out[0] = img[0]; out[1] = img[1]; out[2] = img[2]; out[3] = img[3]; return; }
+        }
+    }
     // shadow (bottom layer)
     if (P.shadowOn) {
         double a = P.shOp * softCover(sdRRect(P.shadow, px, py), P.sigma);
