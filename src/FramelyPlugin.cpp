@@ -54,7 +54,7 @@ struct PDef {
 };
 static const double NA = NAN;
 static const char* SH = "% of the screen's shorter side";
-static const char* PH = "% of the picture's shorter side (with Scale With Picture off: of the screen's shorter side)";
+static const char* PH = "% of the screen's shorter side (with Scale With Picture on: of the picture's)";
 
 // Groups (OFX group params), in panel order after the top rows.
 struct GDef { const char* name; const char* label; bool open; };
@@ -116,38 +116,34 @@ static std::vector<PDef> makeParams() {
     BTN("resetSize", "Reset Size & Position", "grpSize", "Puts every Size & Position setting back to your saved default.");
 
     // ---- Crop & Reframe
-    // "Scale With Picture" checkboxes: on = a share of each picture (internally "each image" = 1), off = a share of the screen (0).
-    B("scCrop", "Scale With Picture", "grpCrop", true, "On: crop and pan are a % of each image, so the same numbers frame every image the same way. Off: they're a % of the screen, like Resolve's own Picture in Picture. Switching keeps the current look; only the numbers change.");
-    D("cropL", "Crop Left", "grpCrop", 0, 0, 49, "% of the image's width (Scale With Picture off: of the screen's width)", 0, 50, "scCrop");
-    D("cropR", "Crop Right", "grpCrop", 0, 0, 49, "% of the image's width (Scale With Picture off: of the screen's width)", 0, 50, "scCrop");
-    D("cropT", "Crop Top", "grpCrop", 0, 0, 49, "% of the image's height (Scale With Picture off: of the screen's height)", 0, 50, "scCrop");
-    D("cropB", "Crop Bottom", "grpCrop", 0, 0, 49, "% of the image's height (Scale With Picture off: of the screen's height)", 0, 50, "scCrop");
+    D("cropL", "Crop Left", "grpCrop", 0, 0, 49, "% of the image's width");
+    D("cropR", "Crop Right", "grpCrop", 0, 0, 49, "% of the image's width");
+    D("cropT", "Crop Top", "grpCrop", 0, 0, 49, "% of the image's height");
+    D("cropB", "Crop Bottom", "grpCrop", 0, 0, 49, "% of the image's height");
     D("zoom", "Zoom", "grpCrop", 100, 100, 400, "% · enlarges the image inside the window without moving the window");
-    D("panX", "Pan X", "grpCrop", 0, -50, 50, "% of the image's width (Scale With Picture off: of the screen's) · moves the image inside the window", -50, 50, "scCrop");
-    D("panY", "Pan Y", "grpCrop", 0, -50, 50, "% of the image's height (Scale With Picture off: of the screen's) · up is +", -50, 50, "scCrop");
+    D("panX", "Pan X", "grpCrop", 0, -50, 50, "% of the image's width · moves the image inside the window");
+    D("panY", "Pan Y", "grpCrop", 0, -50, 50, "% of the image's height · up is +");
     BTN("resetCrop", "Reset Crop & Reframe", "grpCrop", "Puts every Crop & Reframe setting back to your saved default.");
 
     // ---- Shape
-    B("scShape", "Scale With Picture", "grpShape", true, "On: corners grow and shrink with the picture (Roundness 100 = fully rounded ends). Off: corners stay the same size on screen, however big the picture is. Switching keeps the current look.");
-    D("corner", "Roundness", "grpShape", 15, 0, 100, "% · 100 = fully rounded ends. With Scale With Picture off: % of the screen's shorter side, stops at fully round.", 0, 50, "scShape");
+    D("corner", "Roundness", "grpShape", 15, 0, 100, "% · 0 = square corners, 100 = fully rounded ends");
     D("circle", "Circle", "grpShape", 0, 0, 100, "% · pulls the long sides in · 100 = perfect circle");
     BTN("resetShape", "Reset Shape", "grpShape", "Puts every Shape setting back to your saved default.");
 
     // ---- Border
     B("borderOn", "Border", "grpBorder", false, "Turning the border on or off never moves or resizes the picture.");
-    B("scBorder", "Scale With Picture", "grpBorder", false, "Off: the border stays the same thickness on screen, however big the picture is. On: it grows and shrinks with the picture, so a bigger picture gets a thicker border. Switching keeps the current look; only the number changes.");
     D("borderW", "Border Width", "grpBorder", 1.2, 0, 25, PH, 0, 10, "scBorder");
     C("borderPos", "Placement", "grpBorder", 1, {"Inside the edge", "Outside the edge"}, "Outside: the border goes around the picture. Inside: it covers the picture's outer edge. Neither moves or resizes the picture.");
     RGB("borderColor", "Border Color", "grpBorder", 1, 1, 1, "");
+    B("scBorder", "Scale With Picture", "grpBorder", false, "Off: the border is the same thickness on every clip, however big the picture is (Border Width = % of the screen). On: it's drawn as part of the picture, so it gets thinner when the picture is smaller and thicker when it's bigger (Border Width = % of the picture).");
     BTN("resetBorder", "Reset Border", "grpBorder", "Puts every Border setting back to your saved default.");
 
     // ---- Shadow
     B("shadowOn", "Drop Shadow", "grpShadow", false, "Turning the shadow on or off never moves or resizes the picture.");
-    B("scShadow", "Scale With Picture", "grpShadow", true, "On: distance and softness grow and shrink with the picture. Off: they stay the same on screen, however big the picture is. Switching keeps the current look.");
     D("shOp", "Opacity", "grpShadow", 60, 0, 100, "%");
-    D("shDist", "Distance", "grpShadow", 1.5, 0, 40, PH, 0, 20, "scShadow");
-    D("shSoft", "Softness", "grpShadow", 2.5, 0, 40, PH, 0, 20, "scShadow");
-    D("shSize", "Size", "grpShadow", 0, -30, 30, "+ grows, − shrinks", -15, 15, "scShadow");
+    D("shDist", "Distance", "grpShadow", 1.5, 0, 40, "% of the picture's shorter side · grows and shrinks with the picture");
+    D("shSoft", "Softness", "grpShadow", 2.5, 0, 40, "% of the picture's shorter side · grows and shrinks with the picture");
+    D("shSize", "Size", "grpShadow", 0, -30, 30, "+ grows, − shrinks · % of the picture's shorter side");
     D("shAng", "Angle", "grpShadow", 315, 0, 360, "° · 0 = right, 90 = up");
     RGB("shadowColor", "Shadow Color", "grpShadow", 0, 0, 0, "");
     BTN("resetShadow", "Reset Drop Shadow", "grpShadow", "Puts every Drop Shadow setting back to your saved default.");
@@ -160,7 +156,7 @@ static std::vector<PDef> makeParams() {
 }
 static const std::vector<PDef>& PARAMS() { static std::vector<PDef> p = makeParams(); return p; }
 static const PDef* findDef(const std::string& n) { for (auto& d : PARAMS()) if (n == d.name) return &d; return nullptr; }
-static const char* BASIS_NAMES[] = {"bSize", "scCrop", "scShape", "scBorder", "scShadow"};
+static const char* BASIS_NAMES[] = {"bSize", "scBorder"};
 static const char* groupOfBasis(const std::string& b) {
     if (b == "bSize") return "grpSize"; if (b == "scCrop") return "grpCrop"; if (b == "scShape") return "grpShape";
     if (b == "scBorder") return "grpBorder"; return "grpShadow";
@@ -317,7 +313,8 @@ public:
     Settings settingsAt(double t) {
         Settings s;
         s.bSize = ci("bSize", t) == 0 ? framely::kScreen : framely::kImage;
-        s.bCrop = basisAt("scCrop", t); s.bShape = basisAt("scShape", t); s.bBorder = basisAt("scBorder", t); s.bShadow = basisAt("scShadow", t);
+        s.bCrop = framely::kImage; s.bShape = framely::kImage; s.bShadow = framely::kImage;   // always a share of each picture
+        s.bBorder = basisAt("scBorder", t);
         s.boxW = dv("boxW", t); s.boxH = dv("boxH", t); s.size = dv("size", t); s.posX = dv("posX", t); s.posY = dv("posY", t);
         s.safeOn = bv("safeOn", t); s.safeT = dv("safeT", t); s.safeB = dv("safeB", t); s.safeL = dv("safeL", t); s.safeR = dv("safeR", t);
         s.cropL = dv("cropL", t); s.cropR = dv("cropR", t); s.cropT = dv("cropT", t); s.cropB = dv("cropB", t);
@@ -429,7 +426,6 @@ public:
         for (const char* n : {"g916", "g45", "g11", "g43", "g169", "gCustom", "gCross", "gDot", "gBox", "gSafe", "gWarn", "gLabels"}) bp(n)->setIsSecret(!guides);
         dp("guideOp")->setIsSecret(!guides); dp("guideW")->setIsSecret(!guides);
         dp("customW")->setIsSecret(!(guides && custom)); dp("customH")->setIsSecret(!(guides && custom));
-        dp("corner")->setLabel(basisAt("scShape", 0) == 0 ? "Corner Size" : "Roundness");
     }
     void updateRanges(bool clamp = true) {
         for (auto& d : PARAMS()) {
@@ -504,7 +500,7 @@ public:
 
     void changedParam(const InstanceChangedArgs& args, const std::string& name) override {
         flog("changedParam %s reason=%d", name.c_str(), (int)args.reason);
-        const bool isBasis = name == "bSize" || name == "scCrop" || name == "scShape" || name == "scBorder" || name == "scShadow";
+        const bool isBasis = name == "bSize" || name == "scBorder";
         if (inChange || args.reason != eChangeUserEdit) {
             // our own or host edits (resets, undo): remember the basis so the next user switch converts from the right units
             if (isBasis) lastBasis[name] = basisAt(name, args.time);
@@ -585,7 +581,11 @@ public:
                 static const std::map<std::string, const char*> g = {{"resetGuides", "grpGuides"}, {"resetSize", "grpSize"}, {"resetCrop", "grpCrop"},
                     {"resetShape", "grpShape"}, {"resetBorder", "grpBorder"}, {"resetShadow", "grpShadow"}};
                 applyValues(currentDefaults(), true, g.at(name));
-            } else if (name == "bSize" || name == "scCrop" || name == "scShape" || name == "scBorder" || name == "scShadow") {
+            } else if (name == "scBorder") {
+                // Deliberately no conversion: the number stays, so the border visibly changes when you click (user decision).
+                lastBasis[name] = basisAt(name, t);
+                updateRanges(); updateVisibility();
+            } else if (name == "bSize") {
                 int to = basisAt(name, t);
                 auto it = lastBasis.find(name);
                 int from = it != lastBasis.end() ? it->second : 1 - to;   // two options: the previous value is the other one
