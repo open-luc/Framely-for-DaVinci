@@ -121,6 +121,8 @@ static void setKey(Settings& s, const std::string& k, const std::string& v) {
 #define I(n) if (k == #n) { s.n = (int)d; return; }
 #define B(n) if (k == #n) { s.n = d != 0; return; }
     I(bSize) I(bCrop) I(bShape) I(bBorder) I(bShadow)
+    if (k == "scCrop") { s.bCrop = (int)d; return; } if (k == "scShape") { s.bShape = (int)d; return; }
+    if (k == "scBorder") { s.bBorder = (int)d; return; } if (k == "scShadow") { s.bShadow = (int)d; return; }
     D(boxW) D(boxH) D(size) D(posX) D(posY) B(safeOn) D(safeT) D(safeB) D(safeL) D(safeR)
     D(cropL) D(cropR) D(cropT) D(cropB) D(zoom) D(panX) D(panY) D(corner) D(circle)
     B(borderOn) B(borderOutside) D(borderW) B(shadowOn) D(shOp) D(shDist) D(shSoft) D(shSize) D(shAng)

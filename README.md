@@ -6,7 +6,7 @@ It's a picture-in-picture that behaves predictably:
 - **Centred, whole picture visible** the moment you apply it. No Inspector zoom-out workaround.
 - **No pixel values.** Every number is a % of the screen or of each image, so results don't depend on the timeline or
   photo resolution, and settings pasted between clips of different shapes behave predictably.
-- **Measure from: Screen / Each image**, with a per-section override.
+- **Sizing: Fixed on screen / Scales with picture** for crop, corners, border and shadow, with a per-section override.
 - **Size by** Fit in box (screen) or Scale (image) · Position · optional **safe area** with separate margins.
 - **Crop**, then **Zoom/Pan** inside the window (crop never moves the image).
 - **Roundness** 0–100% (fully rounded ends) plus **Circle** 0–100%.

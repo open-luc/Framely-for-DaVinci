@@ -17,7 +17,7 @@ struct RGB { double r = 1, g = 1, b = 1; };
 
 struct Settings {
     // "Measure from" per group
-    int bSize = kImage, bCrop = kImage, bShape = kImage, bBorder = kImage, bShadow = kImage;
+    int bSize = kImage, bCrop = kImage, bShape = kImage, bBorder = kScreen, bShadow = kImage;   // matches the plugin's factory settings
     // Size & Position
     double boxW = 40, boxH = 45;          // % of screen width / height   (Fit in box)
     double size = 90;                     // % · 100 = fits the screen    (Scale)
