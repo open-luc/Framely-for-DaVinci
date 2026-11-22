@@ -27,7 +27,7 @@ $(PROBE)/Contents/MacOS/FramelyProbe.ofx: probe/Probe.cpp $(SUPOBJ)
 # ---- Framely ----
 FR := $(B)/Framely.ofx.bundle
 framely: $(FR)/Contents/MacOS/Framely.ofx
-$(FR)/Contents/MacOS/Framely.ofx: src/FramelyPlugin.cpp src/FramelyCore.h $(SUPOBJ)
+$(FR)/Contents/MacOS/Framely.ofx: src/FramelyPlugin.cpp src/FramelyCore.h src/FramelyUpdate.h $(SUPOBJ)
 	@mkdir -p $(FR)/Contents/MacOS
 	$(CXX) $(CXXFLAGS) src/FramelyPlugin.cpp $(SUPOBJ) $(LDFLAGS) -o $@
 	sed -e 's/@NAME@/Framely/g' -e 's/@ID@/com.framely.pictureinpicture/g' packaging/Info.plist.in > $(FR)/Contents/Info.plist

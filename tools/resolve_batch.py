@@ -4,7 +4,8 @@ import time
 mp = project.GetMediaPool()
 clips = {c.GetName(): c for c in mp.GetRootFolder().GetClipList()}
 FX = "Open FX/Framely/Framely – Picture in Picture"
-OUT = "/Users/luc/Developer/Framely/build/resolve"
+import os
+OUT = os.path.expanduser("~/Developer/Framely/build/resolve")
 names = ["Framely_portrait.png", "Framely_square.png", "Framely_landscape.png"]
 jobs = []
 project.SetCurrentRenderFormatAndCodec("png", "RGB8")

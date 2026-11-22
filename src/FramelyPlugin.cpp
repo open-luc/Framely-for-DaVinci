@@ -21,6 +21,7 @@
 #include "ofxsProcessing.H"
 #include "ofxDrawSuite.h"
 #include "FramelyCore.h"
+#include "FramelyUpdate.h"
 
 using namespace OFX;
 using framely::Settings;
@@ -63,6 +64,7 @@ static const std::vector<GDef> GROUPS = {
     {"grpShape",  "Shape", true},
     {"grpBorder", "Border", true},
     {"grpShadow", "Drop Shadow", true},
+    {"grpUpdate", "Updates", false},
 };
 
 static std::vector<PDef> makeParams() {
@@ -153,6 +155,11 @@ static std::vector<PDef> makeParams() {
     D("shAng", "Angle", "grpShadow", 315, 0, 360, "° · 0 = right, 90 = up");
     RGB("shadowColor", "Shadow Color", "grpShadow", 0, 0, 0, "");
     BTN("resetShadow", "Reset Drop Shadow", "grpShadow", "Puts every Drop Shadow setting back to your saved default.");
+
+    // ---- Updates
+    BTN("checkUpdate", "Check for Updates", "grpUpdate", "Looks on GitHub for a newer Framely.");
+    BTN("installUpdate", "Install Update", "grpUpdate", "Downloads the newest Framely from GitHub and installs it. Restart Resolve afterwards.");
+    BTN("openReleases", "Open Releases Page", "grpUpdate", "Opens Framely's download page on GitHub in your browser.");
     return P;
 }
 static const std::vector<PDef>& PARAMS() { static std::vector<PDef> p = makeParams(); return p; }
@@ -195,6 +202,26 @@ static bool writeSaved(const Values& v) {
     char buf[64];
     for (auto& [n, vals] : v) { out << n; for (double x : vals) { snprintf(buf, sizeof buf, " %.6g", x); out << buf; } out << "\n"; }
     return true;
+}
+
+// ============================================================ update check cache (one background check per day)
+static std::string updateCachePath() { return homeDir() + "/Library/Application Support/Framely/update-check.txt"; }
+static std::string cachedNewerVersion() {   // "" unless a newer version was seen
+    std::ifstream in(updateCachePath()); long long when = 0; std::string tag; in >> when >> tag;
+    if (tag.empty() || framely_update::compareVersions(tag, FRAMELY_VERSION) <= 0) return "";
+    return tag;
+}
+static void backgroundUpdateCheck() {
+    static bool started = false; if (started) return; started = true;
+    std::ifstream in(updateCachePath()); long long when = 0; in >> when;
+    if (time(nullptr) - when < 24 * 3600) return;
+    std::thread([] {
+        framely_update::Release r = framely_update::latest();
+        if (!r.ok) return;
+        mkdir((homeDir() + "/Library/Application Support/Framely").c_str(), 0755);
+        std::ofstream out(updateCachePath()); out << (long long)time(nullptr) << " " << r.tag << "\n";
+        flog("background update check: latest %s", r.tag.c_str());
+    }).detach();
 }
 
 // ============================================================ image area detection
@@ -275,7 +302,10 @@ public:
             inChange = false;
         }
         updateVisibility();
-        flog("createInstance (initialized was applied), version " FRAMELY_VERSION);
+        std::string newer = cachedNewerVersion();
+        if (!newer.empty()) fetchGroupParam("grpUpdate")->setLabel("Updates – " + newer + " available");
+        backgroundUpdateCheck();
+        flog("createInstance, version " FRAMELY_VERSION);
     }
 
     DoubleParam* dp(const char* n) { return (DoubleParam*)params[n]; }
@@ -484,6 +514,28 @@ public:
                 bool ok = writeSaved(readValues());
                 sendMessage(Message::eMessageMessage, "", ok ? "Saved. New copies of the effect start with these settings, and every reset goes back to them."
                                                               : "Couldn't save the default (no write access to ~/Library/Application Support/Framely).");
+            } else if (name == "checkUpdate" || name == "installUpdate") {
+                framely_update::Release r = framely_update::latest();
+                if (!r.ok) sendMessage(Message::eMessageError, "", r.error);
+                else {
+                    mkdir((homeDir() + "/Library/Application Support/Framely").c_str(), 0755);
+                    { std::ofstream out(updateCachePath()); out << (long long)time(nullptr) << " " << r.tag << "\n"; }
+                    bool newer = framely_update::compareVersions(r.tag, FRAMELY_VERSION) > 0;
+                    if (!newer) {
+                        fetchGroupParam("grpUpdate")->setLabel("Updates");
+                        sendMessage(Message::eMessageMessage, "", std::string("Framely is up to date (v" FRAMELY_VERSION ")."));
+                    } else if (name == "checkUpdate") {
+                        fetchGroupParam("grpUpdate")->setLabel("Updates – " + r.tag + " available");
+                        sendMessage(Message::eMessageMessage, "", "Framely " + r.tag + " is available (you have v" FRAMELY_VERSION "). Press Install Update, then restart Resolve.");
+                    } else {
+                        std::string err = framely_update::install(r, framely_update::ownBundlePath());
+                        flog("installUpdate %s: %s", r.tag.c_str(), err.empty() ? "ok" : err.c_str());
+                        if (err.empty()) sendMessage(Message::eMessageMessage, "", "Framely " + r.tag + " is installed. Quit and reopen Resolve to start using it.");
+                        else sendMessage(Message::eMessageError, "", err);
+                    }
+                }
+            } else if (name == "openReleases") {
+                framely_update::openURL(framely_update::releasesPage());
             } else if (name == "resetDefault") {
                 applyValues(currentDefaults(), true);
             } else if (name == "factory") {
@@ -721,7 +773,10 @@ void FramelyFactory::describeInContext(ImageEffectDescriptor& desc, ContextEnum)
     ClipDescriptor* dst = desc.defineClip(kOfxImageEffectOutputClipName);
     dst->addSupportedComponent(ePixelComponentRGBA); dst->setSupportsTiles(false);
 
-    Values defs = currentDefaults();   // the saved default becomes the native ↺ default (as of this Resolve launch)
+    // Native ↺ defaults are FIXED factory values (user decision 2026-11-21): untouched settings in old projects never change
+    // when the saved default changes. New copies still start from the saved default (applied in createInstance), and the
+    // Reset buttons go to the saved default.
+    Values defs = factoryValues();
     PageParamDescriptor* page = desc.definePageParam("Controls");
     std::map<std::string, GroupParamDescriptor*> grp;
     auto addGroupIfNeeded = [&](const char* g) {
@@ -765,7 +820,7 @@ void FramelyFactory::describeInContext(ImageEffectDescriptor& desc, ContextEnum)
     BooleanParamDescriptor* init = desc.defineBooleanParam("initialized");
     init->setDefault(false); init->setIsSecret(true); init->setAnimates(false); init->setLabel("initialized");
     page->addChild(*init);
-    flog("describeInContext (defaults from %s)", access(defaultsPath().c_str(), R_OK) == 0 ? "saved file" : "factory");
+    flog("describeInContext (native defaults = factory)");
 }
 
 ImageEffect* FramelyFactory::createInstance(OfxImageEffectHandle h, ContextEnum) { return new FramelyPlugin(h); }

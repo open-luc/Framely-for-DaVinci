@@ -17,10 +17,28 @@ It's a picture-in-picture that behaves predictably:
 - **Save as Default / Reset to Default** at the top, a reset button per section, and Resolve's ↺ per value.
 - Drag the picture in the viewer (OpenFX Overlay); hold Option to pan the image inside.
 
+> **Alpha.** Version 0.1.0 is the first public build. Expect rough edges; please report issues.
+
 ## Install (macOS)
 
-Copy `Framely.ofx.bundle` into `/Library/OFX/Plugins/` (admin password needed) and restart Resolve.
-It appears under **Effects › Open FX › Framely**; searching "Picture in Picture" finds it.
+1. Download `Framely-macOS.zip` from [Releases](https://github.com/open-luc/Framely-for-DaVinci/releases) and unzip it.
+2. Move `Framely.ofx.bundle` into `/Library/OFX/Plugins/` (Finder asks for your password).
+3. Restart Resolve. Framely is under **Effects › Open FX › Framely**; searching "Picture in Picture" finds it.
+
+Works on Apple Silicon and Intel Macs.
+
+## Updating
+
+Open the effect's **Updates** section in the Inspector:
+**Check for Updates** looks on GitHub, **Install Update** downloads and installs the new version (macOS may ask for your
+password), then restart Resolve. **Open Releases Page** opens this repo's downloads. Framely also checks quietly once a
+day and renames the section to "Updates – vX.Y.Z available" when there's something new.
+
+## Saved default
+
+**Save as Default** stores the current settings; new copies of the effect start from them, and **Reset to Default** and
+each section's reset button go back to them. Resolve's own ↺ arrow on each value goes back to the built-in factory value,
+so changing your saved default never changes clips in older projects.
 
 ## Build
 
@@ -28,6 +46,7 @@ Needs Xcode command line tools. No CMake.
 
 ```bash
 make            # builds build/Framely.ofx.bundle (arm64)
+make dist       # universal (arm64 + x86_64) dist/Framely-macOS.zip
 make install    # copies into /Library/OFX/Plugins/Framely.ofx.bundle (that folder must be writable by you)
 make harness    # command-line renderer used for tests
 ```
