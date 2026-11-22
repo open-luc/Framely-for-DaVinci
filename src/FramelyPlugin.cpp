@@ -264,7 +264,7 @@ public:
             }
         }
         initialized = fetchBooleanParam("initialized");
-        flog("createInstance: pinStamp=%.0f initialized=%d corner=%.2f borderOn=%d | cropL=%g cropR=%g cropT=%g cropB=%g panX=%g panY=%g zoom=%g shDist=%g shSoft=%g", (int)initialized->getValue(), dp("corner")->getValue(), (int)bp("borderOn")->getValue(),
+        flog("createInstance: initialized=%d corner=%.2f borderOn=%d | cropL=%g cropR=%g cropT=%g cropB=%g panX=%g panY=%g zoom=%g shDist=%g shSoft=%g", (int)initialized->getValue(), dp("corner")->getValue(), (int)bp("borderOn")->getValue(),
              dp("cropL")->getValue(), dp("cropR")->getValue(), dp("cropT")->getValue(), dp("cropB")->getValue(), dp("panX")->getValue(), dp("panY")->getValue(), dp("zoom")->getValue(), dp("shDist")->getValue(), dp("shSoft")->getValue());
 
         // A brand-new copy of the effect starts from the saved default (the file may be newer than this Resolve session's describe).
@@ -527,14 +527,15 @@ public:
         pending = false;
         bool was = inChange; inChange = true;
         try {
+            beginEditBlock("Framely default");
             Values v; if (loadSaved(v)) for (auto& d : PARAMS()) { auto it = v.find(d.name); if (it != v.end() && d.kind != kButton) setOne(d, it->second); }
             initialized->setValue(true);
-            dp("pinStamp")->setValue((double)time(nullptr));
+            endEditBlock();
             flog("pinAll(%s) done", why);
         } catch (...) { flog("pinAll(%s) threw", why); }
         inChange = was;
     }
-    void beginEdit() override { flog("beginEdit (UI opened)"); pinAll("beginEdit"); }
+    void beginEdit() override { flog("beginEdit (UI opened)"); }
     void endEdit() override { flog("endEdit"); }
     void syncPrivateData() override {
         flog("syncPrivateData: corner=%.2f borderOn=%d", dp("corner")->getValue(), (int)bp("borderOn")->getValue()); }
@@ -661,7 +662,6 @@ public:
         if (framely::sdRRect(G.shape, px, py) > slack) return false;
         dragImage = (fx->ci("dragMode", a.time) == 1) != altDown;
         flog("penDown: drag %s", dragImage ? "image" : "picture");
-        fx->pinAll("penDown");
         start = a.penPosition; dragging = true;
         if (dragImage) { s0 = fx->dv("panX", a.time); s1 = fx->dv("panY", a.time); }
         else { s0 = fx->dv("posX", a.time); s1 = fx->dv("posY", a.time); }
@@ -763,9 +763,6 @@ void FramelyFactory::describeInContext(ImageEffectDescriptor& desc, ContextEnum)
         }
         page->addChild(*pd);
     }
-    DoubleParamDescriptor* pin = desc.defineDoubleParam("pinStamp");
-    pin->setDefault(0); pin->setIsSecret(true); pin->setAnimates(false); pin->setLabel("pinStamp"); pin->setRange(0, 1e12); pin->setDisplayRange(0, 1e12);
-    page->addChild(*pin);
     BooleanParamDescriptor* init = desc.defineBooleanParam("initialized");
     init->setDefault(false); init->setIsSecret(true); init->setAnimates(false); init->setLabel("initialized");
     page->addChild(*init);
