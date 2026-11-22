@@ -35,7 +35,8 @@ $(FR)/Contents/MacOS/Framely.ofx: src/FramelyPlugin.cpp src/FramelyCore.h src/Fr
 
 # Installs into the user-owned bundle folder created once with admin rights. Resolve must restart to load it.
 install: framely
-	cp -R $(FR)/ /Library/OFX/Plugins/Framely.ofx.bundle/
+	@# swap Contents by rename (overwriting a loaded plugin in place can get killed by macOS)
+	B=/Library/OFX/Plugins/Framely.ofx.bundle; rm -rf "$$B/Contents.old"; [ ! -d "$$B/Contents" ] || mv "$$B/Contents" "$$B/Contents.old"; ditto $(FR)/Contents "$$B/Contents"; rm -rf "$$B/Contents.old"
 
 harness: build/harness-bin
 build/harness-bin: tools/harness.cpp src/FramelyCore.h
