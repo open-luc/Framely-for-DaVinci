@@ -19,13 +19,13 @@ TL = {'4k': (3840, 2160), 'hd': (1920, 1080), 'vert': (2160, 3840)}
 IM = {'portrait': (1080, 1920, 200), 'square': (1080, 1080, 140), 'landscape': (1920, 1080, 275)}
 only = sys.argv[1] if len(sys.argv) > 1 else None
 fails = 0; total = 0
-for f in sorted(glob.glob(os.path.join(root, 'build/resolve*/*.png'))):
+for f in sorted(glob.glob(os.path.join(root, 'build/resolve/*.png')) + glob.glob(os.path.join(root, 'build/resolve[0-9]/*.png'))):
     m = re.match(r'(\w+?)_(4k|hd|vert)_(portrait|square|landscape)_\d+\.png', os.path.basename(f))
     if not m: continue
     c, t, i = m.groups()
     if only and c != only: continue
     fw, fh = TL[t]; iw, ih, hue = IM[i]
-    diff = f.replace('.png', '.diff.png').replace('/resolve2/', '/diff/').replace('/resolve/', '/diff/')
+    diff = f.replace('.png', '.diff.png').replace('/resolve2/', '/diff/').replace('/resolve3/', '/diff/').replace('/resolve/', '/diff/')
     os.makedirs(os.path.dirname(diff), exist_ok=True)
     r = subprocess.run([os.path.join(root, 'build/harness-bin'), 'compare', f, diff, str(fw), str(fh), str(iw), str(ih), str(hue)] + harness_keys(cfgs[c]), capture_output=True, text=True)
     total += 1; fails += r.returncode != 0
