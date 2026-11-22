@@ -147,6 +147,16 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
+    if (mode == "testimg") {   // raw test images (what you'd import into Resolve)
+        struct IM { const char* n; int w, h; double hue; } ims[] = {{"portrait", 1080, 1920, 200}, {"square", 1080, 1080, 140}, {"landscape", 1920, 1080, 275}};
+        for (auto& im : ims) {
+            Img t = makeTest(im.w, im.h, im.hue); std::vector<unsigned char> rgba((size_t)im.w * im.h * 4);
+            for (int y = 0; y < im.h; y++) for (int x = 0; x < im.w; x++) for (int c = 0; c < 4; c++)
+                rgba[((size_t)(im.h - 1 - y) * im.w + x) * 4 + c] = (unsigned char)std::lround(255 * std::clamp(t.at(x, y)[c], 0.f, 1.f));
+            writePNG(std::string(argv[2]) + "/Framely_" + im.n + ".png", im.w, im.h, rgba);
+        }
+        return 0;
+    }
     if (mode == "one") {
         Settings st; for (int i = 7; i < argc; i++) { std::string kv = argv[i]; auto e = kv.find('='); setKey(st, kv.substr(0, e), kv.substr(e + 1)); }
         double k = 1; for (int i = 7; i < argc; i++) if (!strncmp(argv[i], "k=", 2)) k = atof(argv[i] + 2);
