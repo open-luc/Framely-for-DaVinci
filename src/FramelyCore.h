@@ -32,7 +32,7 @@ struct Settings {
     double corner = 15;                   // screen: % of screen short side · image: % (100 = fully rounded ends)
     double circle = 0;                    // %
     // Border
-    bool   borderOn = false, borderOutside = false;
+    bool   borderOn = false, borderOutside = true;   // outside: matches the plugin's factory settings
     double borderW = 1.2;                 // screen: % of screen short side · image: % of window short side
     RGB    borderColor{1, 1, 1};
     // Shadow

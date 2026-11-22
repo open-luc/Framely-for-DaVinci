@@ -137,7 +137,7 @@ static std::vector<PDef> makeParams() {
     B("borderOn", "Border", "grpBorder", false, "Turning the border on or off never moves or resizes the picture.");
     B("scBorder", "Scale With Picture", "grpBorder", false, "Off: the border stays the same thickness on screen, however big the picture is. On: it grows and shrinks with the picture, so a bigger picture gets a thicker border. Switching keeps the current look; only the number changes.");
     D("borderW", "Border Width", "grpBorder", 1.2, 0, 25, PH, 0, 10, "scBorder");
-    C("borderPos", "Placement", "grpBorder", 0, {"Inside the edge", "Outside the edge"}, "");
+    C("borderPos", "Placement", "grpBorder", 1, {"Inside the edge", "Outside the edge"}, "Outside: the border goes around the picture. Inside: it covers the picture's outer edge. Neither moves or resizes the picture.");
     RGB("borderColor", "Border Color", "grpBorder", 1, 1, 1, "");
     BTN("resetBorder", "Reset Border", "grpBorder", "Puts every Border setting back to your saved default.");
 
