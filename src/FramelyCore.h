@@ -16,8 +16,8 @@ enum Basis { kScreen = 0, kImage = 1 };
 struct RGB { double r = 1, g = 1, b = 1; };
 
 struct Settings {
-    // "Measure from" per group
-    int bSize = kImage, bCrop = kImage, bShape = kImage, bBorder = kScreen, bShadow = kImage;   // matches the plugin's factory settings
+    // bSize: kScreen = "Fit in box", kImage = "Scale". Crop is always a share of each picture (kImage).
+    int bSize = kImage, bCrop = kImage;
     // Size & Position
     double boxW = 40, boxH = 45;          // % of screen width / height   (Fit in box)
     double size = 90;                     // % · 100 = fits the screen    (Scale)
@@ -29,13 +29,19 @@ struct Settings {
     double zoom = 100;                    // %
     double panX = 0, panY = 0;            // % of screen*scale or of picture; up is +
     // Shape
-    double corner = 15;                   // screen: % of screen short side · image: % (100 = fully rounded ends)
+    // Corners and border are a % of the SCREEN's shorter side, never of the photo, so pasted settings give every photo
+    // shape the exact same corners and border. "Resize ... With Picture" multiplies them by Size/100 (Fit in box: the
+    // box's shorter side / the screen's shorter side), never by anything that depends on the photo's shape.
+    double corner = 7.5;                  // Corner Size, % of screen short side
+    bool   rsCorner = true;               // Resize Corners With Picture
     double circle = 0;                    // %
     // Border
     bool   borderOn = false, borderOutside = true;   // outside: matches the plugin's factory settings
-    double borderW = 1.2;                 // screen: % of screen short side · image: % of window short side
+    double borderW = 1.2;                 // % of screen short side
+    bool   rsBorder = false;              // Resize Border With Picture
     RGB    borderColor{1, 1, 1};
-    // Shadow
+    // Shadow: Distance, Softness and Size are % of the screen's shorter side × Size/100 (like ticked corners), so every
+    // photo shape gets the identical shadow and it always grows and shrinks with the picture.
     bool   shadowOn = false;
     double shOp = 60, shDist = 1.5, shSoft = 2.5, shSize = 0, shAng = 315;
     RGB    shadowColor{0, 0, 0};
@@ -85,6 +91,10 @@ inline Geom computeGeom(const Settings& st, double FW, double FH, double imgW, d
     }
     const double ox = hasSafe ? (sx0 + sx1) / 2 : FW / 2, oy = hasSafe ? (sy0 + sy1) / 2 : FH / 2;
     const double ax = ox + st.posX / 100 * FW, ay = oy - st.posY / 100 * FH;
+    // Corners & border: one factor for every photo shape (see Settings)
+    const double sizeFactor = st.bSize == kScreen ? std::min(st.boxW / 100 * FW, st.boxH / 100 * FH) / Ss : st.size / 100;
+    const double borderPx = st.borderW / 100 * Ss * (st.rsBorder ? sizeFactor : 1);
+    const double cornerWant = st.corner / 100 * Ss * (st.rsCorner ? sizeFactor : 1);
     double s = st.bSize == kScreen ? std::min(st.boxW / 100 * FW / wW, st.boxH / 100 * FH / wH) : st.size / 100;
     auto placeX = [&]() { return st.bSize == kScreen ? ax : ax + offX * s; };
     auto placeY = [&]() { return st.bSize == kScreen ? ay : ay + offY * s; };
@@ -92,10 +102,7 @@ inline Geom computeGeom(const Settings& st, double FW, double FH, double imgW, d
     bool safeAdjusted = false;
     if (hasSafe) {
         const double sW = sx1 - sx0, sH = sy1 - sy0;
-        auto obOf = [&](double sc) {
-            if (!(st.borderOn && st.borderOutside)) return 0.0;
-            return st.bBorder == kScreen ? st.borderW / 100 * Ss : st.borderW / 100 * std::min(wW, wH) * sc;
-        };
+        auto obOf = [&](double) { return st.borderOn && st.borderOutside ? borderPx : 0.0; };
         for (int i = 0; i < 3; i++) {
             double tw = wW * s + 2 * obOf(s), th = wH * s + 2 * obOf(s);
             if (tw > sW + .01 || th > sH + .01) { s *= std::min(sW / tw, sH / th); safeAdjusted = true; }
@@ -109,7 +116,7 @@ inline Geom computeGeom(const Settings& st, double FW, double FH, double imgW, d
     const double cx = wcx - offX * s, cy = wcy - offY * s;
     const double W = refW * s, H = refH * s, ww = wW * s, wh = wH * s, winShort = std::min(ww, wh), half0 = winShort / 2;
     // 3. shape: corners, then circle pull-in
-    const double cornerPx = std::min(st.bShape == kScreen ? st.corner / 100 * Ss : st.corner / 100 * half0, half0);
+    const double cornerPx = std::min(cornerWant, half0);   // can't be rounder than fully round
     const double t = clamp01(st.circle / 100);
     double sw = ww, sh = wh; if (ww > wh) sw = ww - (ww - wh) * t; else sh = wh - (wh - ww) * t;
     const double shortS = std::min(sw, sh) / 2, r = std::min(cornerPx + (shortS - cornerPx) * t, shortS);
@@ -121,8 +128,8 @@ inline Geom computeGeom(const Settings& st, double FW, double FH, double imgW, d
     double nx = std::min(std::max(ccx, G.shape.x1 - cw / 2), G.shape.x0 + cw / 2);
     double ny = std::min(std::max(ccy, G.shape.y1 - ch / 2), G.shape.y0 + ch / 2);
     G.panLimited = std::fabs(nx - ccx) > .5 || std::fabs(ny - ccy) > .5; ccx = nx; ccy = ny;
-    auto len = [&](double val, int basis) { return basis == kScreen ? val / 100 * Ss : val / 100 * winShort; };
-    const double ang = st.shAng * M_PI / 180, dist = len(st.shDist, st.bShadow);
+    auto len = [&](double val) { return val / 100 * Ss * sizeFactor; };
+    const double ang = st.shAng * M_PI / 180, dist = len(st.shDist);
 
     G.s = s; G.W = W; G.H = H; G.cx = cx; G.cy = cy; G.Ss = Ss; G.winShort = winShort; G.half0 = half0; G.cornerPx = cornerPx;
     G.refW = refW; G.refH = refH; G.cl = cl; G.cr = cr; G.ct = ct; G.cb = cb;
@@ -131,9 +138,9 @@ inline Geom computeGeom(const Settings& st, double FW, double FH, double imgW, d
     G.hasSafe = hasSafe; G.safe = { sx0, sx1, sy0, sy1 }; G.safeAdjusted = safeAdjusted;
     G.originX = ox; G.originY = oy; G.anchorX = ax; G.anchorY = ay;
     G.panPxX = ccx - cx; G.panPxY = -(ccy - cy); G.unitX = unitX; G.unitY = unitY;
-    G.borderPx = len(st.borderW, st.bBorder);
+    G.borderPx = borderPx;
     G.shDist = dist; G.shDx = dist * std::cos(ang); G.shDy = -dist * std::sin(ang);
-    G.shSoft = len(st.shSoft, st.bShadow); G.shSpread = len(st.shSize, st.bShadow);
+    G.shSoft = len(st.shSoft); G.shSpread = len(st.shSize);
     return G;
 }
 

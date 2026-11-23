@@ -1,10 +1,11 @@
 # name | plugin params (defaults-file names). Used by tools/resolve_batch + tools/compare.py
 factory |
-styled | borderPos=0 scBorder=1 corner=30 borderOn=1 borderW=1.5 shadowOn=1 shDist=2 shSoft=4 shOp=80
-outside | scBorder=1 corner=100 borderOn=1 borderPos=1 borderW=3 shadowOn=1 shOp=80 shDist=3 shSoft=6 shSize=2 posX=15 posY=-10 size=60
-crop | cropL=20 cropT=10 zoom=150 panX=10 panY=-5 corner=20 size=60 posX=-20 posY=10 circle=40
-fitbox | borderPos=0 bSize=0 scCrop=0 scShape=0 scBorder=0 scShadow=0 boxW=30 boxH=40 posX=25 borderOn=1 borderW=0.5 corner=3
-safe | scBorder=1 safeOn=1 safeT=10 safeB=20 safeL=5 safeR=30 size=120 posX=40 borderOn=1 borderPos=1 borderW=2
-circle | borderPos=0 scBorder=1 circle=100 borderOn=1 borderW=2 borderColor=1,0.8,0.2 size=50
-shadowred | scBorder=1 corner=40 shadowOn=1 shadowColor=1,0.1,0.1 shOp=90 shDist=4 shSoft=6 shSize=1.5 shAng=300 size=70 borderOn=1 borderPos=1 borderW=1
-shadowscr | bSize=1 scShadow=0 scBorder=0 shadowOn=1 shadowColor=0.2,0.9,1 shOp=100 shDist=2 shSoft=0 shSize=-0.5 shAng=45 size=50 corner=10
+styled | borderPos=0 cornerSize=12 borderOn=1 borderW=1.5 shadowOn=1 shDist=2 shSoft=4 shOp=80
+outside | cornerSize=50 borderOn=1 borderPos=1 borderW=3 rsBorder=1 shadowOn=1 shOp=80 shDist=3 shSoft=6 shSize=2 posX=15 posY=-10 size=60
+crop | cropL=20 cropT=10 zoom=150 panX=10 panY=-5 cornerSize=10 rsCorner=0 size=60 posX=-20 posY=10 circle=40
+fitbox | borderPos=0 bSize=0 boxW=30 boxH=40 posX=25 borderOn=1 borderW=0.5 rsBorder=1 cornerSize=3
+safe | safeOn=1 safeT=10 safeB=20 safeL=5 safeR=30 size=120 posX=40 borderOn=1 borderPos=1 borderW=2 rsBorder=1 cornerSize=6
+circle | borderPos=0 circle=100 borderOn=1 borderW=2 borderColor=1,0.8,0.2 size=50
+shadowred | cornerSize=20 rsCorner=0 shadowOn=1 shadowColor=1,0.1,0.1 shOp=90 shDist=4 shSoft=6 shSize=1.5 shAng=300 size=70 borderOn=1 borderPos=1 borderW=1
+shadowscr | shadowOn=1 shadowColor=0.2,0.9,1 shOp=100 shDist=2 shSoft=0 shSize=-0.5 shAng=45 size=50 cornerSize=5
+brand | size=35 cornerSize=10 rsCorner=0 borderOn=1 borderW=3 rsBorder=0 posX=-10

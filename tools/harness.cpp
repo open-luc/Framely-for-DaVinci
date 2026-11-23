@@ -117,16 +117,17 @@ static void alphaBBox(Img& f, int& x1, int& y1, int& x2, int& y2) {
 
 static void setKey(Settings& s, const std::string& k, const std::string& v) {
     double d = atof(v.c_str());
+    if (k == "k" || k == "hue") return;                       // render options, read by the caller
 #define D(n) if (k == #n) { s.n = d; return; }
 #define I(n) if (k == #n) { s.n = (int)d; return; }
 #define B(n) if (k == #n) { s.n = d != 0; return; }
-    I(bSize) I(bCrop) I(bShape) I(bBorder) I(bShadow)
-    if (k == "scCrop") { s.bCrop = (int)d; return; } if (k == "scShape") { s.bShape = (int)d; return; }
-    if (k == "scBorder") { s.bBorder = (int)d; return; } if (k == "scShadow") { s.bShadow = (int)d; return; }
+    I(bSize) I(bCrop)
+    if (k == "cornerSize") { s.corner = d; return; }       // the plugin's parameter name
+    B(rsCorner) B(rsBorder)
     D(boxW) D(boxH) D(size) D(posX) D(posY) B(safeOn) D(safeT) D(safeB) D(safeL) D(safeR)
     D(cropL) D(cropR) D(cropT) D(cropB) D(zoom) D(panX) D(panY) D(corner) D(circle)
+    if (k == "borderPos") { s.borderOutside = d != 0; return; }   // the plugin's parameter name
     B(borderOn) B(borderOutside) D(borderW) B(shadowOn) D(shOp) D(shDist) D(shSoft) D(shSize) D(shAng)
-    if (k == "basis") { s.bSize = s.bCrop = s.bShape = s.bBorder = s.bShadow = (int)d; return; }
     if (k == "borderColor") { unsigned c = strtoul(v.c_str(), 0, 16); s.borderColor = {((c >> 16) & 255) / 255.0, ((c >> 8) & 255) / 255.0, (c & 255) / 255.0}; return; }
     if (k == "shadowColor") { unsigned c = strtoul(v.c_str(), 0, 16); s.shadowColor = {((c >> 16) & 255) / 255.0, ((c >> 8) & 255) / 255.0, (c & 255) / 255.0}; return; }
     fprintf(stderr, "unknown key %s\n", k.c_str());
@@ -218,7 +219,8 @@ int main(int argc, char** argv) {
     if (mode == "one") {
         Settings st; for (int i = 7; i < argc; i++) { std::string kv = argv[i]; auto e = kv.find('='); setKey(st, kv.substr(0, e), kv.substr(e + 1)); }
         double k = 1; for (int i = 7; i < argc; i++) if (!strncmp(argv[i], "k=", 2)) k = atof(argv[i] + 2);
-        renderCase(argv[2], atoi(argv[3]), atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), 200, st, k);
+        double hue = 200; for (int i = 7; i < argc; i++) if (!strncmp(argv[i], "hue=", 4)) hue = atof(argv[i] + 4);
+        renderCase(argv[2], atoi(argv[3]), atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), hue, st, k);
         return 0;
     }
     if (mode == "render") {
@@ -227,10 +229,10 @@ int main(int argc, char** argv) {
         struct IM { const char* n; int w, h; double hue; } ims[] = {{"portrait", 1080, 1920, 200}, {"square", 1080, 1080, 140}, {"landscape", 1920, 1080, 275}};
         std::map<std::string, std::string> presets = {
             {"default", ""},
-            {"styled", "corner=30 borderOn=1 borderW=1.5 shadowOn=1 shDist=2 shSoft=4"},
-            {"outside", "corner=100 borderOn=1 borderOutside=1 borderW=3 shadowOn=1 shOp=80 shDist=3 shSoft=6 shSize=2"},
+            {"styled", "corner=12 borderOn=1 borderW=1.5 shadowOn=1 shDist=2 shSoft=4"},
+            {"outside", "corner=50 borderOn=1 borderOutside=1 borderW=3 rsBorder=1 shadowOn=1 shOp=80 shDist=3 shSoft=6 shSize=2"},
             {"circle", "circle=100 corner=50 borderOn=1 borderW=2 size=50"},
-            {"crop", "cropL=20 cropT=10 zoom=150 panX=10 panY=-5 corner=20 size=60 posX=-20 posY=10"},
+            {"crop", "cropL=20 cropT=10 zoom=150 panX=10 panY=-5 corner=10 rsCorner=0 size=60 posX=-20 posY=10"},
             {"fitbox", "bSize=0 boxW=30 boxH=40 posX=25 borderOn=1"},
             {"safe", "safeOn=1 safeT=10 safeB=20 safeL=5 safeR=30 size=120 posX=40 borderOn=1 borderOutside=1 borderW=2"},
         };
