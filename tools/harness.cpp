@@ -206,6 +206,17 @@ int main(int argc, char** argv) {
         if (!ok) writePNG(argv[3], w, h, diff);
         return ok ? 0 : 1;
     }
+    if (mode == "trim") {   // trim <in.png> <out.png> [pad]: cut the plain background rows off the bottom (doc figures)
+        int w, h, bpp; std::vector<unsigned char> R;
+        if (!readPNG(argv[2], w, h, bpp, R)) return 2;
+        int pad = argc > 4 ? atoi(argv[4]) : 24, last = h - 1;
+        auto same = [&](int y) { for (int x = 0; x < w; x++) for (int c = 0; c < 3; c++) if (abs(R[((size_t)y * w + x) * bpp + c] - R[((size_t)(h - 1) * w) * bpp + c]) > 2) return false; return true; };
+        while (last > 0 && same(last)) last--;
+        int H = std::min(h, last + 1 + pad); std::vector<unsigned char> o((size_t)w * H * 4);
+        for (int y = 0; y < H; y++) for (int x = 0; x < w; x++) { for (int c = 0; c < 3; c++) o[((size_t)y * w + x) * 4 + c] = R[((size_t)y * w + x) * bpp + c]; o[((size_t)y * w + x) * 4 + 3] = 255; }
+        writePNG(argv[3], w, H, o); printf("%dx%d\n", w, H);
+        return 0;
+    }
     if (mode == "testimg") {   // raw test images (what you'd import into Resolve)
         struct IM { const char* n; int w, h; double hue; } ims[] = {{"portrait", 1080, 1920, 200}, {"square", 1080, 1080, 140}, {"landscape", 1920, 1080, 275}};
         for (auto& im : ims) {

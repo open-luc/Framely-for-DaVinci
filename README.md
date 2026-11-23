@@ -4,14 +4,14 @@
 It's a picture-in-picture that behaves predictably:
 
 - **Centred, whole picture visible** the moment you apply it. No Inspector zoom-out workaround.
-- **No pixel values.** Every number is a % of the screen or of each image, so results don't depend on the timeline or
-  photo resolution, and settings pasted between clips of different shapes behave predictably.
-- Crop, corners and shadow are a share of each picture. The border is the same thickness on every clip, or, with
-  **Scale With Picture**, a share of the picture.
+- **One look on every photo.** Paste the same settings onto a wide landscape, a square and a narrow portrait photo and
+  they all get the exact same corners, border and shadow ([see below](#one-look-on-every-photo)).
+- **No pixel values.** Every number is a %, so results don't depend on the timeline or photo resolution.
 - **Size by** Fit in box (screen) or Scale (image) · Position · optional **safe area** with separate margins.
 - **Crop**, then **Zoom/Pan** inside the window (crop never moves the image).
-- **Roundness** 0–100% (fully rounded ends) plus **Circle** 0–100%.
-- **Border** inside or outside · **Drop shadow** (opacity, distance, softness, size, angle, colour).
+- **Corner Size** plus **Circle** 0–100%, and **Resize Corners With Picture** (ticked by default).
+- **Border** outside or inside the edge, with **Resize Border With Picture** (unticked by default) ·
+  **Drop shadow** (opacity, distance, softness, size, angle, colour).
   Turning border or shadow on/off never moves or resizes the picture. Edges are sharp and anti-aliased, never feathered.
 - **Guides** in the viewer only (OpenFX Overlay): ghost outlines for 9:16, 4:5, 1:1, 4:3, 16:9 and a custom ratio,
   centre crosshair/dot, box and safe-area outlines, and a "no room" warning. Guides never appear in renders.
@@ -19,6 +19,56 @@ It's a picture-in-picture that behaves predictably:
 - Drag the picture in the viewer (OpenFX Overlay); hold Option to pan the image inside.
 
 > **Alpha.** This is an early public build (see Releases for the current version). Expect rough edges; please report issues.
+
+## One look on every photo
+
+Copy your Framely settings from one photo, paste them onto photos of any other shape, and the corners and border come
+out the same.
+
+Corner Size, Border Width and the shadow are a % of the **screen's** shorter side, never of the photo, so they don't
+depend on the photo's shape. Crop and Pan stay a % of each image.
+
+### 1 · Paste the same settings onto different photo shapes
+
+A wide landscape, a square and a narrow portrait photo, all with the exact same pasted settings at Size 90.
+
+![With Framely, the landscape, square and narrow portrait all get 80 px corners and a 30 px border. Measured as a % of each photo instead, the narrow portrait would get 45 px corners and a 17 px border.](docs/images/1-same-settings-every-shape.png)
+
+In DaVinci Resolve you see this live: turn on Guides and set the viewer to OpenFX Overlay. The 9:16, 1:1 and 16:9
+outlines show exactly where photos of those shapes would land, with their corners, using your current settings.
+
+![Guides in the viewer: dashed 9:16, 1:1 and 16:9 outlines around a square clip, with the centre crosshair and dot.](docs/images/guides.png)
+
+### 2 · Shape section: what happens when you change Size
+
+Same photo, same settings. Drag Size from 90 down to 35. Only the checkbox differs.
+
+> **Resize Corners With Picture** (ticked by default)\
+> When you make the picture smaller with Size:\
+> Ticked: the corners shrink with it, like zooming out on the whole picture.\
+> Unticked: the corners keep their size, so the smaller picture looks rounder.
+
+![Ticked: the corners got smaller too; blown up, the same shape as Before. Unticked: the corners kept their size; blown up, much rounder than Before.](docs/images/2-resize-corners.png)
+
+### 3 · Border section: what happens when you change Size
+
+Same photo, same settings, square corners so only the border changes. Drag Size from 90 down to 35.
+
+> **Resize Border With Picture** (unticked by default)\
+> When you make the picture smaller with Size:\
+> Ticked: the border shrinks with it, like zooming out on the whole picture.\
+> Unticked: the border keeps its thickness, so the smaller picture's border looks thicker.
+
+![Unticked: the border kept its thickness; blown up, a much thicker border than Before. Ticked: the border got thinner too; blown up, the same look as Before.](docs/images/3-resize-border.png)
+
+Ticking or unticking either box never rewrites your numbers; it only changes what happens when Size changes. At Size 100
+both give the same result. The drop shadow always resizes with the picture. In **Fit in box** mode, "Size" means the
+box: corners, border and shadow follow the box's size, never the photo's shape.
+
+<img src="docs/images/inspector.png" width="560" alt="The Shape and Border sections in the Inspector, showing Corner Size, Circle, Resize Corners With Picture (ticked), Border Width, Placement Outside the edge, Border Color and Resize Border With Picture (unticked), with their help text.">
+
+The pictures above are rendered by Framely's own code (the same code Resolve runs; `tools/docimages.py` rebuilds them).
+The guides and Inspector pictures are illustrations drawn from that code, not screenshots.
 
 ## Install (macOS)
 
@@ -54,10 +104,13 @@ make harness    # command-line renderer used for tests
 
 ## How it's tested
 
-- `src/FramelyCore.h` holds all geometry and pixel maths with no OFX dependency. Its geometry is checked against the
-  original interactive spec on 400 random cases (`tools/mockcheck/mockgeom.js`, run with Deno).
+- `src/FramelyCore.h` holds all geometry and pixel maths with no OFX dependency. Its placement and crop geometry was
+  checked against the original interactive spec on 400 random cases (`tools/mockcheck/mockgeom.js`, run with Deno).
 - `tools/harness.cpp` renders the same maths to PNG. Frames rendered by Resolve itself (render queue, PNG) are compared
-  pixel by pixel with the harness: 9 setting presets × portrait/square/landscape × 4K/HD/vertical (`tools/compare.py`).
+  pixel by pixel with the harness: 10 setting presets × portrait/square/landscape × 4K/HD/vertical (`tools/compare.py`).
+- `tools/sizecheck.py` checks that corners, border and shadow come out identical, in pixels, on landscape, square,
+  portrait and 9:21 photos, with each Resize box ticked and unticked, in Scale and Fit in box modes, on 4K, HD and
+  vertical timelines.
 
 ## Known issues (alpha)
 

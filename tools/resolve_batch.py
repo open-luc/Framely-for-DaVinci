@@ -1,21 +1,25 @@
-# Paste into the Resolve MCP run_script with CFG set: builds 3 timelines (4K/HD/Vertical) with the 3 test images,
+# Paste into the Resolve MCP run_script with CFG (and optionally PREFIX/OUTDIR/BIN) set: builds 3 timelines (4K/HD/Vertical) with the 3 test images,
 # applies a fresh Framely (which starts from the saved-defaults file), and renders one PNG frame per clip.
 import time
 mp = project.GetMediaPool()
 clips = {c.GetName(): c for c in mp.GetRootFolder().GetClipList()}
 FX = "Open FX/Framely/Framely – Picture in Picture"
 import os
-OUT = os.path.expanduser("~/Developer/Framely/build/resolve")
+PREFIX = globals().get("PREFIX", "R13"); BIN = globals().get("BIN", "Render tests 0.1.3")
+OUT = os.path.expanduser(globals().get("OUTDIR", "~/Developer/Framely/build/resolve013"))
+os.makedirs(OUT, exist_ok=True)
+root = mp.GetRootFolder()
+binf = next((f for f in root.GetSubFolderList() if f.GetName() == BIN), None) or mp.AddSubFolder(root, BIN)
 names = ["Framely_portrait.png", "Framely_square.png", "Framely_landscape.png"]
 jobs = []
 project.SetCurrentRenderFormatAndCodec("png", "RGB8")
 for res, w, h in [("4k", 3840, 2160), ("hd", 1920, 1080), ("vert", 2160, 3840)]:
-    tn = f"T {CFG} {res}"
+    tn = f"{PREFIX} {CFG} {res}"
     tl = None
     for i in range(1, project.GetTimelineCount() + 1):
         if project.GetTimelineByIndex(i).GetName() == tn: tl = project.GetTimelineByIndex(i)
     if tl is None:
-        tl = mp.CreateEmptyTimeline(tn); project.SetCurrentTimeline(tl)
+        mp.SetCurrentFolder(binf); tl = mp.CreateEmptyTimeline(tn); mp.SetCurrentFolder(root); project.SetCurrentTimeline(tl)
         tl.SetSetting("useCustomSettings", "1"); tl.SetSetting("timelineResolutionWidth", str(w)); tl.SetSetting("timelineResolutionHeight", str(h))
         items = mp.AppendToTimeline([{"mediaPoolItem": clips[n]} for n in names])
         for it in items: it.AddEffect("ofx", FX)
