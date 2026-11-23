@@ -11,12 +11,13 @@
 
 namespace framely {
 
-enum Basis { kScreen = 0, kImage = 1 };
+enum Basis { kScreen = 0, kImage = 1, kFill = 2 };   // bSize only: kFill = "Crop to fill box"
 
 struct RGB { double r = 1, g = 1, b = 1; };
 
 struct Settings {
-    // bSize: kScreen = "Fit in box", kImage = "Scale". Crop is always a share of each picture (kImage).
+    // bSize: kScreen = "Fit in box", kImage = "Scale", kFill = "Crop to fill box" (the picture is exactly the box;
+    // the crop sliders are ignored and each image is cropped evenly to the box's shape). Crop is a share of each picture.
     int bSize = kImage, bCrop = kImage;
     // Size & Position
     double boxW = 40, boxH = 45;          // % of screen width / height   (Fit in box)
@@ -81,6 +82,12 @@ inline Geom computeGeom(const Settings& st, double FW, double FH, double imgW, d
     const double minRef = std::min(refW, refH) * .01;
     if (refW - cl - cr < minRef) { double k = (refW - minRef) / std::max(1e-9, cl + cr); cl *= k; cr *= k; }
     if (refH - ct - cb < minRef) { double k = (refH - minRef) / std::max(1e-9, ct + cb); ct *= k; cb *= k; }
+    const bool boxMode = st.bSize == kScreen || st.bSize == kFill;
+    if (st.bSize == kFill) {   // cover the box: scale so the image fills it, crop the overflow evenly from both sides
+        const double BW = std::max(1e-6, st.boxW / 100 * FW), BH = std::max(1e-6, st.boxH / 100 * FH);
+        const double s0 = std::max(BW / refW, BH / refH);
+        cl = cr = std::max(0.0, (refW - BW / s0) / 2); ct = cb = std::max(0.0, (refH - BH / s0) / 2);
+    }
     const double wW = refW - cl - cr, wH = refH - ct - cb, offX = (cl - cr) / 2, offY = (ct - cb) / 2;
     // 2. size & position. Origin = screen centre, or the safe area's centre when that's on.
     bool hasSafe = st.safeOn; double sx0 = 0, sx1 = 0, sy0 = 0, sy1 = 0;
@@ -92,12 +99,12 @@ inline Geom computeGeom(const Settings& st, double FW, double FH, double imgW, d
     const double ox = hasSafe ? (sx0 + sx1) / 2 : FW / 2, oy = hasSafe ? (sy0 + sy1) / 2 : FH / 2;
     const double ax = ox + st.posX / 100 * FW, ay = oy - st.posY / 100 * FH;
     // Corners & border: one factor for every photo shape (see Settings)
-    const double sizeFactor = st.bSize == kScreen ? std::min(st.boxW / 100 * FW, st.boxH / 100 * FH) / Ss : st.size / 100;
+    const double sizeFactor = boxMode ? std::min(st.boxW / 100 * FW, st.boxH / 100 * FH) / Ss : st.size / 100;
     const double borderPx = st.borderW / 100 * Ss * (st.rsBorder ? sizeFactor : 1);
     const double cornerWant = st.corner / 100 * Ss * (st.rsCorner ? sizeFactor : 1);
-    double s = st.bSize == kScreen ? std::min(st.boxW / 100 * FW / wW, st.boxH / 100 * FH / wH) : st.size / 100;
-    auto placeX = [&]() { return st.bSize == kScreen ? ax : ax + offX * s; };
-    auto placeY = [&]() { return st.bSize == kScreen ? ay : ay + offY * s; };
+    double s = boxMode ? std::min(st.boxW / 100 * FW / wW, st.boxH / 100 * FH / wH) : st.size / 100;
+    auto placeX = [&]() { return boxMode ? ax : ax + offX * s; };
+    auto placeY = [&]() { return boxMode ? ay : ay + offY * s; };
     double wcx = placeX(), wcy = placeY();
     bool safeAdjusted = false;
     if (hasSafe) {

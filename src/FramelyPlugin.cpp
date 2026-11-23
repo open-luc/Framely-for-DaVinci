@@ -15,6 +15,8 @@
 #include <sstream>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <algorithm>
 
 #include "ofxsImageEffect.h"
 #include "ofxsInteract.h"
@@ -28,7 +30,7 @@ using namespace OFX;
 using framely::Settings;
 using framely::Geom;
 
-#define FRAMELY_VERSION "0.1.3"
+#define FRAMELY_VERSION "0.2.0"
 
 // ============================================================ logging
 static std::string homeDir() { const char* h = getenv("HOME"); return h ? h : "/tmp"; }
@@ -58,6 +60,7 @@ static const char* SH = "% of the screen's shorter side";
 // Groups (OFX group params), in panel order after the top rows.
 struct GDef { const char* name; const char* label; bool open; };
 static const std::vector<GDef> GROUPS = {
+    {"grpPresets", "Presets", true},
     {"grpGuides", "Guides", false},
     {"grpSize",   "Size & Position", true},
     {"grpCrop",   "Crop & Reframe", true},
@@ -67,6 +70,10 @@ static const std::vector<GDef> GROUPS = {
     {"grpUpdate", "Updates", false},
 };
 
+static bool isSectionReset(const char* n) {
+    for (const char* r : {"resetGuides", "resetSize", "resetCrop", "resetShape", "resetBorder", "resetShadow"}) if (!strcmp(n, r)) return true;
+    return false;
+}
 static std::vector<PDef> makeParams() {
     std::vector<PDef> P;
     auto D = [&](const char* n, const char* l, const char* g, double def, double mn, double mx, const char* hint,
@@ -80,9 +87,11 @@ static std::vector<PDef> makeParams() {
     auto BTN = [&](const char* n, const char* l, const char* g, const char* hint) { P.push_back({n, l, kButton, g, 0, 0, 0, NA, NA, hint}); };
 
     // ---- top of the panel
-    BTN("saveDefault", "Save as Default", nullptr, "Saves every setting below. New copies of the effect start with them, and every reset goes back to them.");
-    BTN("resetDefault", "Reset to Default", nullptr, "Puts every setting back to your saved default (or factory settings if you never saved one).");
-    BTN("factory", "Factory Settings", nullptr, "Loads the built-in settings. Your saved default is not changed.");
+    // (the Preset menu and Preset Name field are defined in describeInContext, above these buttons)
+    BTN("savePreset", "Save Preset", "grpPresets", "Saves every setting below under the name in Preset Name. Using a name that already exists updates that preset.");
+    BTN("deletePreset", "Delete Preset", "grpPresets", "Moves the preset picked in the Preset menu to the Trash. Factory can't be deleted.");
+    BTN("setDefault", "Set as Default", "grpPresets", "Makes the preset picked in the Preset menu your default: every new copy of the effect starts with it, and every reset goes back to it.");
+    BTN("resetDefault", "Reset to Default", "grpPresets", "Puts every setting back to your default preset.");
     // ---- Guides (viewer only, never rendered)
     B("guides", "Show Layout Guides", "grpGuides", true, "Viewer-only outlines showing where pictures of other shapes would land with these exact settings. Never appear in renders. Set the viewer's overlay to OpenFX Overlay to see them.");
     B("g916", "9:16", "grpGuides", true, ""); B("g45", "4:5", "grpGuides", true, ""); B("g11", "1:1", "grpGuides", true, "");
@@ -99,8 +108,10 @@ static std::vector<PDef> makeParams() {
     BTN("resetGuides", "Reset Guides", "grpGuides", "Puts every Guides setting back to your saved default.");
 
     // ---- Size & Position
-    C("bSize", "Size by", "grpSize", 1, {"Fit in box", "Scale"},
-      "Fit in box: every image goes in the same box on screen, as large as it fits. Scale: every image gets the same scale, as a % of fitting the screen.");
+    // Saved as a number: 0 Fit in box, 1 Scale, 2 Crop to fill box (new in 0.2.0, so old projects/presets keep their meaning).
+    // The menu shows them as Fit in box, Crop to fill box, Scale (see describeInContext).
+    C("bSize", "Size by", "grpSize", 1, {"Fit in box", "Scale", "Crop to fill box"},
+      "Fit in box: the whole image, as large as it fits inside the box.\nCrop to fill box: the picture is exactly the box on every image; what doesn't fit is cropped off, and Pan picks what shows.\nScale: every image gets the same scale, as a % of fitting the screen.");
     D("boxW", "Box Width", "grpSize", 40, 1, 100, "% of screen width");
     D("boxH", "Box Height", "grpSize", 45, 1, 100, "% of screen height");
     D("size", "Size", "grpSize", 90, 5, 200, "% · 100 = fits the screen");
@@ -152,6 +163,12 @@ static std::vector<PDef> makeParams() {
     BTN("checkUpdate", "Check for Updates", "grpUpdate", "Looks on GitHub for a newer Framely.");
     BTN("installUpdate", "Install Update", "grpUpdate", "Downloads the newest Framely from GitHub and installs it. Restart Resolve afterwards.");
     BTN("openReleases", "Open Releases Page", "grpUpdate", "Opens Framely's download page on GitHub in your browser.");
+    // Each section's Reset button is its first row (user decision 2026-11-23), so it's there without scrolling.
+    for (size_t i = 0; i < P.size(); i++) {
+        if (P[i].kind != kButton || !isSectionReset(P[i].name)) continue;
+        size_t first = 0; while (first < i && !(P[first].group && P[i].group && !strcmp(P[first].group, P[i].group))) first++;
+        PDef b = P[i]; P.erase(P.begin() + i); P.insert(P.begin() + first, b);
+    }
     return P;
 }
 static const std::vector<PDef>& PARAMS() { static std::vector<PDef> p = makeParams(); return p; }
@@ -182,15 +199,86 @@ static bool loadSaved(Values& out) {
     return any;
 }
 static Values currentDefaults() { Values v; if (!loadSaved(v)) v = factoryValues(); return v; }
-static bool writeSaved(const Values& v) {
-    std::string dir = homeDir() + "/Library/Application Support/Framely";
-    mkdir(dir.c_str(), 0755);
-    std::ofstream out(defaultsPath()); if (!out) return false;
-    out << "# Framely – Picture in Picture saved default (written by Save as Default). name value\n";
+static std::string appDir() { return homeDir() + "/Library/Application Support/Framely"; }
+static bool writeValues(const std::string& path, const std::string& header, const Values& v) {
+    mkdir(appDir().c_str(), 0755);
+    std::ofstream out(path); if (!out) return false;
+    out << header;
     char buf[64];
     for (auto& [n, vals] : v) { out << n; for (double x : vals) { snprintf(buf, sizeof buf, " %.6g", x); out << buf; } out << "\n"; }
+    return (bool)out;
+}
+
+// ============================================================ presets
+// One file per preset in ~/Library/Application Support/Framely/Presets/<name>.txt ("# name: <name>" + "name value" lines).
+// "Factory" is built in and never a file. The default is kept as defaults.txt (the values new copies start with) whose
+// "# preset: <name>" line says which preset it came from. No defaults.txt = the default is Factory.
+static const char* FACTORY = "Factory";
+static std::string presetDir() { return appDir() + "/Presets"; }
+static std::string trim(const std::string& s) {
+    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
+    return a == std::string::npos ? "" : s.substr(a, b - a + 1);
+}
+static std::string lower(std::string s) { for (auto& c : s) c = (char)tolower((unsigned char)c); return s; }
+static std::string presetFile(const std::string& name) {
+    std::string f;
+    for (char c : name) f += (c == '/' || c == ':' || c == '\\') ? '-' : c;
+    if (!f.empty() && f[0] == '.') f[0] = '_';
+    return presetDir() + "/" + f + ".txt";
+}
+static std::string headerValue(const std::string& path, const char* key) {   // "# key: value" on the first lines
+    std::ifstream in(path); std::string line, k = std::string("# ") + key + ":";
+    for (int i = 0; i < 3 && std::getline(in, line); i++) if (line.rfind(k, 0) == 0) return trim(line.substr(k.size()));
+    return "";
+}
+static bool loadValues(const std::string& path, Values& out) {
+    std::ifstream in(path); if (!in) return false;
+    out = factoryValues(); std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream ss(line); std::string n; ss >> n; std::vector<double> vals; double x;
+        while (ss >> x) vals.push_back(x);
+        auto it = out.find(n);
+        if (it != out.end() && vals.size() == it->second.size()) it->second = vals;
+    }
     return true;
 }
+static std::vector<std::string> listPresets() {   // user presets, A→Z (not Factory)
+    std::vector<std::string> names;
+    if (DIR* d = opendir(presetDir().c_str())) {
+        while (dirent* e = readdir(d)) {
+            std::string f = e->d_name;
+            if (f.size() < 5 || f[0] == '.' || f.substr(f.size() - 4) != ".txt") continue;
+            std::string n = headerValue(presetDir() + "/" + f, "name");
+            if (n.empty()) n = f.substr(0, f.size() - 4);
+            names.push_back(n);
+        }
+        closedir(d);
+    }
+    std::sort(names.begin(), names.end(), [](const std::string& a, const std::string& b) { return lower(a) < lower(b); });
+    return names;
+}
+// Earlier versions saved a nameless default with "Save as Default": keep it as a preset called "My Default".
+static void migrateOldDefault() {
+    std::ifstream in(defaultsPath()); if (!in) return;
+    if (!headerValue(defaultsPath(), "preset").empty()) return;
+    Values v; if (!loadValues(defaultsPath(), v)) return;
+    mkdir(appDir().c_str(), 0755); mkdir(presetDir().c_str(), 0755);
+    std::string n = "My Default";
+    writeValues(presetFile(n), "# name: " + n + "\n", v);
+    writeValues(defaultsPath(), "# preset: " + n + "\n# Framely default: the values new copies start with (set with Set as Default).\n", v);
+}
+static std::string defaultPresetName() {
+    migrateOldDefault();
+    std::ifstream in(defaultsPath()); if (!in) return FACTORY;
+    std::string n = headerValue(defaultsPath(), "preset");
+    return n.empty() ? FACTORY : n;
+}
+static bool setDefaultPreset(const std::string& name, const Values& v) {
+    if (name == FACTORY) { unlink(defaultsPath().c_str()); std::ifstream in(defaultsPath()); return !in; }
+    return writeValues(defaultsPath(), "# preset: " + name + "\n# Framely default: the values new copies start with (set with Set as Default).\n", v);
+}
+static std::string menuLabel(const std::string& n, const std::string& def) { return n == def ? n + "  (default)" : n; }
 
 // ============================================================ update check cache (one background check per day)
 static std::string updateCachePath() { return homeDir() + "/Library/Application Support/Framely/update-check.txt"; }
@@ -279,6 +367,8 @@ public:
             }
         }
         initialized = fetchBooleanParam("initialized");
+        presetMenu = fetchChoiceParam("preset");
+        presetName = fetchStringParam("presetName");
         flog("createInstance: initialized=%d corner=%.2f borderOn=%d | cropL=%g cropR=%g cropT=%g cropB=%g panX=%g panY=%g zoom=%g shDist=%g shSoft=%g", (int)initialized->getValue(), dp("cornerSize")->getValue(), (int)bp("borderOn")->getValue(),
              dp("cropL")->getValue(), dp("cropR")->getValue(), dp("cropT")->getValue(), dp("cropB")->getValue(), dp("panX")->getValue(), dp("panY")->getValue(), dp("zoom")->getValue(), dp("shDist")->getValue(), dp("shSoft")->getValue());
 
@@ -287,13 +377,97 @@ public:
             inChange = true;
             Values v; if (loadSaved(v)) { applyValues(v, false); pending = true; }
             initialized->setValue(true);
+            std::string def = defaultPresetName();
+            if (def != FACTORY) presetName->setValue(def);
             inChange = false;
         }
+        { std::string n; presetName->getValue(n); inChange = true; refreshPresetMenu(trim(n)); inChange = false; }
         updateVisibility();
         std::string newer = cachedNewerVersion();
         if (!newer.empty()) fetchGroupParam("grpUpdate")->setLabel("Updates – " + newer + " available");
         backgroundUpdateCheck();
         flog("createInstance, version " FRAMELY_VERSION);
+    }
+
+    // ---------------- presets
+    ChoiceParam* presetMenu; StringParam* presetName;
+    std::vector<std::string> menuNames;   // what each menu row means, as this copy last built it
+    // Rebuild the Preset menu from the Presets folder and show `select` in it (Factory if it isn't there).
+    void refreshPresetMenu(const std::string& select) {
+        std::string def = defaultPresetName();
+        std::vector<std::string> names = {FACTORY};
+        for (auto& n : listPresets()) names.push_back(n);
+        int idx = 0;
+        for (size_t i = 0; i < names.size(); i++) if (lower(names[i]) == lower(select)) idx = (int)i;
+        try {
+            presetMenu->resetOptions();
+            for (auto& n : names) presetMenu->appendOption(menuLabel(n, def));
+            menuNames = names;
+            int cur; presetMenu->getValue(cur);
+            if (cur != idx) presetMenu->setValue(idx);
+            flog("preset menu rebuilt: %zu rows, showing %d (%s), default %s", names.size(), idx, names[idx].c_str(), def.c_str());
+        } catch (...) { flog("preset menu rebuild threw"); }
+    }
+    std::string pickedPreset() {
+        int i; presetMenu->getValue(i);
+        return i >= 0 && i < (int)menuNames.size() ? menuNames[i] : FACTORY;
+    }
+    void presetChanged() {   // the user picked a row in the Preset menu: load it
+        std::string n = pickedPreset();
+        Values v;
+        if (n == FACTORY) v = factoryValues();
+        else if (!loadValues(presetFile(n), v)) {
+            sendMessage(Message::eMessageError, "", "The preset \"" + n + "\" isn't there any more (it may have been deleted from another clip).");
+            refreshPresetMenu(""); return;
+        }
+        applyValues(v, true);
+        presetName->setValue(n == FACTORY ? "" : n);
+        flog("preset loaded: %s", n.c_str());
+    }
+    void savePreset() {
+        std::string n; presetName->getValue(n); n = trim(n);
+        if (n.empty()) { sendMessage(Message::eMessageError, "", "Type a name in Preset Name first, then press Save Preset."); return; }
+        if (lower(n) == lower(FACTORY)) { sendMessage(Message::eMessageError, "", "\"Factory\" is the built-in preset and can't be overwritten. Pick another name."); return; }
+        mkdir(appDir().c_str(), 0755); mkdir(presetDir().c_str(), 0755);
+        // keep the exact spelling of an existing preset with the same name (names don't care about capitals)
+        for (auto& e : listPresets()) if (lower(e) == lower(n)) n = e;
+        bool existed = access(presetFile(n).c_str(), F_OK) == 0;
+        Values v = readValues();
+        if (!writeValues(presetFile(n), "# name: " + n + "\n", v)) {
+            sendMessage(Message::eMessageError, "", "Couldn't save the preset (no write access to ~/Library/Application Support/Framely/Presets).");
+            return;
+        }
+        std::string extra;
+        if (lower(defaultPresetName()) == lower(n)) { setDefaultPreset(n, v); extra = " It's your default, so new copies of the effect start with the new settings."; }
+        presetName->setValue(n);
+        refreshPresetMenu(n);
+        sendMessage(Message::eMessageMessage, "", (existed ? "Updated the preset \"" : "Saved the preset \"") + n + "\"." + extra);
+    }
+    void deletePreset() {
+        std::string n = pickedPreset();
+        if (n == FACTORY) { sendMessage(Message::eMessageError, "", "Factory is built in and can't be deleted. Pick one of your presets in the Preset menu first."); return; }
+        std::string from = presetFile(n), trashDir = homeDir() + "/.Trash", base = from.substr(from.rfind('/') + 1);
+        std::string to = trashDir + "/Framely preset " + base;
+        for (int i = 2; access(to.c_str(), F_OK) == 0; i++) to = trashDir + "/Framely preset " + base.substr(0, base.size() - 4) + " " + std::to_string(i) + ".txt";
+        if (rename(from.c_str(), to.c_str()) != 0 && unlink(from.c_str()) != 0) {
+            sendMessage(Message::eMessageError, "", "Couldn't delete the preset \"" + n + "\".");
+            return;
+        }
+        std::string extra;
+        if (lower(defaultPresetName()) == lower(n)) { setDefaultPreset(FACTORY, {}); extra = " It was your default, so Factory is your default again."; }
+        std::string typed; presetName->getValue(typed);
+        if (lower(trim(typed)) == lower(n)) presetName->setValue("");
+        refreshPresetMenu("");
+        sendMessage(Message::eMessageMessage, "", "Moved the preset \"" + n + "\" to the Trash." + extra + " The settings on this clip didn't change.");
+    }
+    void setDefault() {
+        std::string n = pickedPreset();
+        Values v;
+        if (n == FACTORY) v = factoryValues();
+        else if (!loadValues(presetFile(n), v)) { sendMessage(Message::eMessageError, "", "The preset \"" + n + "\" isn't there any more."); refreshPresetMenu(""); return; }
+        if (!setDefaultPreset(n, v)) { sendMessage(Message::eMessageError, "", "Couldn't set the default (no write access to ~/Library/Application Support/Framely)."); return; }
+        refreshPresetMenu(n);
+        sendMessage(Message::eMessageMessage, "", "\"" + n + "\" is now your default. Every new copy of the effect starts with it, and every reset goes back to it.");
     }
 
     DoubleParam* dp(const char* n) { return (DoubleParam*)params[n]; }
@@ -308,7 +482,7 @@ public:
 
     Settings settingsAt(double t) {
         Settings s;
-        s.bSize = ci("bSize", t) == 0 ? framely::kScreen : framely::kImage;
+        { int b = ci("bSize", t); s.bSize = b == 0 ? framely::kScreen : b == 2 ? framely::kFill : framely::kImage; }
         s.bCrop = framely::kImage;   // always a share of each picture
         s.boxW = dv("boxW", t); s.boxH = dv("boxH", t); s.size = dv("size", t); s.posX = dv("posX", t); s.posY = dv("posY", t);
         s.safeOn = bv("safeOn", t); s.safeT = dv("safeT", t); s.safeB = dv("safeB", t); s.safeL = dv("safeL", t); s.safeR = dv("safeR", t);
@@ -415,8 +589,10 @@ public:
 
     // ---------------- panel behaviour
     void updateVisibility() {
-        bool fit = ci("bSize", 0) == 0, safe = bp("safeOn")->getValue(), guides = bp("guides")->getValue(), custom = bp("gCustom")->getValue();
+        int sb = ci("bSize", 0);
+        bool fit = sb == 0 || sb == 2, safe = bp("safeOn")->getValue(), guides = bp("guides")->getValue(), custom = bp("gCustom")->getValue();
         dp("boxW")->setIsSecret(!fit); dp("boxH")->setIsSecret(!fit); dp("size")->setIsSecret(fit);
+        for (const char* n : {"cropL", "cropR", "cropT", "cropB"}) dp(n)->setIsSecret(sb == 2);   // Crop to fill box crops by itself
         for (const char* n : {"safeT", "safeB", "safeL", "safeR"}) dp(n)->setIsSecret(!safe);
         for (const char* n : {"g916", "g45", "g11", "g43", "g169", "gCustom", "gCross", "gDot", "gBox", "gSafe", "gWarn", "gLabels"}) bp(n)->setIsSecret(!guides);
         dp("guideOp")->setIsSecret(!guides); dp("guideW")->setIsSecret(!guides);
@@ -445,13 +621,15 @@ public:
     // Convert Size & Position when "Size by" switches between Fit in box and Scale, exact for the image currently shown.
     void convertGroup(const std::string& basis, int from, int to, double t) {
         if (from == to) return;
+        auto box = [](int b) { return b == framely::kScreen || b == framely::kFill; };
+        if (box(from) && box(to)) return;   // Fit in box <-> Crop to fill box: the box stays as it is
         double FW, FH, IW, IH; imageAspect(t, FW, FH, IW, IH);
         Settings s = settingsAt(t);
         s.bSize = from;
         Geom G = framely::computeGeom(s, FW, FH, IW, IH);
         auto set = [&](const char* n, double v) { if (dp(n)->getNumKeys() == 0) dp(n)->setValue(v); };
         {
-            if (to == framely::kScreen) { set("boxW", G.win.w / FW * 100); set("boxH", G.win.h / FH * 100);
+            if (box(to)) { set("boxW", G.win.w / FW * 100); set("boxH", G.win.h / FH * 100);
                 set("posX", (G.win.cx - G.originX) / FW * 100); set("posY", -(G.win.cy - G.originY) / FH * 100); }
             else { set("size", G.s * 100); set("posX", (G.cx - G.originX) / FW * 100); set("posY", -(G.cy - G.originY) / FH * 100); }
         }
@@ -527,10 +705,14 @@ public:
         inChange = true;
         const double t = args.time;
         try {
-            if (name == "saveDefault") {
-                bool ok = writeSaved(readValues());
-                sendMessage(Message::eMessageMessage, "", ok ? "Saved. New copies of the effect start with these settings, and every reset goes back to them."
-                                                              : "Couldn't save the default (no write access to ~/Library/Application Support/Framely).");
+            if (name == "preset") {
+                presetChanged();
+            } else if (name == "savePreset") {
+                savePreset();
+            } else if (name == "deletePreset") {
+                deletePreset();
+            } else if (name == "setDefault") {
+                setDefault();
             } else if (name == "checkUpdate" || name == "installUpdate") {
                 framely_update::Release r = framely_update::latest();
                 if (!r.ok) sendMessage(Message::eMessageError, "", r.error);
@@ -555,8 +737,9 @@ public:
                 framely_update::openURL(framely_update::releasesPage());
             } else if (name == "resetDefault") {
                 applyValues(currentDefaults(), true);
-            } else if (name == "factory") {
-                applyValues(factoryValues(), true);
+                std::string def = defaultPresetName();
+                presetName->setValue(def == FACTORY ? "" : def);
+                refreshPresetMenu(def);
             } else if (name == "resetGuides" || name == "resetSize" || name == "resetCrop" || name == "resetShape" || name == "resetBorder" || name == "resetShadow") {
                 static const std::map<std::string, const char*> g = {{"resetGuides", "grpGuides"}, {"resetSize", "grpSize"}, {"resetCrop", "grpCrop"},
                     {"resetShape", "grpShape"}, {"resetBorder", "grpBorder"}, {"resetShadow", "grpShadow"}};
@@ -564,7 +747,7 @@ public:
             } else if (name == "bSize") {
                 int to = basisAt(name, t);
                 auto it = lastBasis.find(name);
-                int from = it != lastBasis.end() ? it->second : 1 - to;   // two options: the previous value is the other one
+                int from = it != lastBasis.end() ? it->second : (to == 1 ? 0 : 1);
                 convertGroup(name, from, to, t);
                 lastBasis[name] = to;
                 updateRanges(); updateVisibility();
@@ -650,7 +833,7 @@ public:
         Ctx X{(OfxDrawContextHandle)a.drawContext, FH, a.pixelScale.x, fx->dv("guideOp", t) / 100, fx->dv("guideW", t) / 2};
         const double u = X.u; const bool labels = fx->bv("gLabels", t);
         // Box
-        if (fx->bv("gBox", t) && S.bSize == framely::kScreen) {
+        if (fx->bv("gBox", t) && (S.bSize == framely::kScreen || S.bSize == framely::kFill)) {
             double bw = S.boxW / 100 * FW, bh = S.boxH / 100 * FH, bx = G.anchorX - bw / 2, by = G.anchorY - bh / 2;
             haloLoop(X, {{bx, by}, {bx + bw, by}, {bx + bw, by + bh}, {bx, by + bh}}, 1, 1, 1, kOfxDrawLineStipplePatternDash);
             label(X, labels, "Box", bx + 5 * u, by + 5 * u, 1, 1, 1);
@@ -793,6 +976,23 @@ void FramelyFactory::describeInContext(ImageEffectDescriptor& desc, ContextEnum)
             GroupParamDescriptor* gd = desc.defineGroupParam(G.name); gd->setLabel(G.label); gd->setOpen(G.open); page->addChild(*gd); grp[g] = gd;
         }
     };
+    {   // Presets section at the very top (Resolve lifts a top-level button above everything, so all of it lives in a section).
+        // The menu is rebuilt live by each copy (see refreshPresetMenu).
+        addGroupIfNeeded("grpPresets");
+        ChoiceParamDescriptor* pm = desc.defineChoiceParam("preset");
+        pm->setLabel("Preset");
+        pm->setHint("Pick a preset to load it. Factory is the built-in look. Your default is marked (default).");
+        std::string def = defaultPresetName();
+        pm->appendOption(menuLabel(FACTORY, def));
+        for (auto& n : listPresets()) pm->appendOption(menuLabel(n, def));
+        pm->setDefault(0); pm->setAnimates(false); pm->setParent(*grp["grpPresets"]);
+        page->addChild(*pm);
+        StringParamDescriptor* pn = desc.defineStringParam("presetName");
+        pn->setLabel("Preset Name");
+        pn->setHint("Type any name, then press Save Preset. Picking a preset in the menu fills this in, so you can update it.");
+        pn->setStringType(eStringTypeSingleLine); pn->setDefault(""); pn->setAnimates(false); pn->setParent(*grp["grpPresets"]);
+        page->addChild(*pn);
+    }
     for (auto& d : PARAMS()) {
         addGroupIfNeeded(d.group);
         ParamDescriptor* pd = nullptr;
@@ -810,9 +1010,14 @@ void FramelyFactory::describeInContext(ImageEffectDescriptor& desc, ContextEnum)
                 pd = p; break;
             }
             case kBool: { BooleanParamDescriptor* p = desc.defineBooleanParam(d.name); p->setDefault(dv.empty() ? d.def != 0 : dv[0] != 0); pd = p; break; }
-            case kChoice: { ChoiceParamDescriptor* p = desc.defineChoiceParam(d.name); for (auto o : d.opts) p->appendOption(o); p->setDefault(dv.empty() ? (int)d.def : (int)dv[0]); pd = p; break; }
+            case kChoice: {
+                ChoiceParamDescriptor* p = desc.defineChoiceParam(d.name);
+                if (!strcmp(d.name, "bSize")) {   // display order Fit / Crop to fill / Scale, saved numbers unchanged
+                    p->appendOption(d.opts[0], "", 0); p->appendOption(d.opts[1], "", 2); p->appendOption(d.opts[2], "", 1);
+                } else for (auto o : d.opts) p->appendOption(o);
+                p->setDefault(dv.empty() ? (int)d.def : (int)dv[0]); pd = p; break; }
             case kRGB: { RGBParamDescriptor* p = desc.defineRGBParam(d.name); if (dv.size() == 3) p->setDefault(dv[0], dv[1], dv[2]); else p->setDefault(d.r, d.g, d.b); pd = p; break; }
-            case kButton: { PushButtonParamDescriptor* p = desc.definePushButtonParam(d.name); pd = p; break; }
+            case kButton: { PushButtonParamDescriptor* p = desc.definePushButtonParam(d.name); pd = p; break; }   // (Resolve 21.2 ignores button icons; tested)
             default: break;
         }
         if (!pd) continue;

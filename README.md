@@ -7,7 +7,8 @@ It's a picture-in-picture that behaves predictably:
 - **One look on every photo.** Paste the same settings onto a wide landscape, a square and a narrow portrait photo and
   they all get the exact same corners, border and shadow ([see below](#one-look-on-every-photo)).
 - **No pixel values.** Every number is a %, so results don't depend on the timeline or photo resolution.
-- **Size by** Fit in box (screen) or Scale (image) · Position · optional **safe area** with separate margins.
+- **Size by** Fit in box, Crop to fill box (every picture is exactly the box; Pan picks what shows) or Scale ·
+  Position · optional **safe area** with separate margins.
 - **Crop**, then **Zoom/Pan** inside the window (crop never moves the image).
 - **Corner Size** plus **Circle** 0–100%, and **Resize Corners With Picture** (ticked by default).
 - **Border** outside or inside the edge, with **Resize Border With Picture** (unticked by default) ·
@@ -15,7 +16,8 @@ It's a picture-in-picture that behaves predictably:
   Turning border or shadow on/off never moves or resizes the picture. Edges are sharp and anti-aliased, never feathered.
 - **Guides** in the viewer only (OpenFX Overlay): ghost outlines for 9:16, 4:5, 1:1, 4:3, 16:9 and a custom ratio,
   centre crosshair/dot, box and safe-area outlines, and a "no room" warning. Guides never appear in renders.
-- **Save as Default / Reset to Default** at the top, a reset button per section, and Resolve's ↺ per value.
+- **Presets** at the top: save looks by name, pick one to load it, set one as your default. Each section has a
+  **Reset** button as its first row (resets the whole section), and Resolve's ↺ resets a single value.
 - Drag the picture in the viewer (OpenFX Overlay); hold Option to pan the image inside.
 
 > **Alpha.** This is an early public build (see Releases for the current version). Expect rough edges; please report issues.
@@ -85,11 +87,19 @@ Open the effect's **Updates** section in the Inspector:
 password), then restart Resolve. **Open Releases Page** opens this repo's downloads. Framely also checks quietly once a
 day and renames the section to "Updates – vX.Y.Z available" when there's something new.
 
-## Saved default
+## Presets and your default
 
-**Save as Default** stores the current settings; new copies of the effect start from them, and **Reset to Default** and
-each section's reset button go back to them. Resolve's own ↺ arrow on each value goes back to the built-in factory value,
-so changing your saved default never changes clips in older projects.
+Open the **Presets** section at the top of the effect:
+
+- **Save Preset** saves every setting under the name typed in **Preset Name**. Saving with an existing name updates it.
+- Pick a preset in the **Preset** menu to load it. **Factory** is the built-in look.
+- **Set as Default** makes the picked preset your default: new copies of the effect start with it, and **Reset to
+  Default** and each section's **Reset** button go back to it. The menu marks it "(default)".
+- **Delete Preset** moves the picked preset to the Trash.
+
+Resolve's own ↺ arrow on each value goes back to the built-in factory value, so changing your default never changes
+clips in older projects. Presets are plain text files in `~/Library/Application Support/Framely/Presets`; updating
+Framely never touches them.
 
 ## Build
 
@@ -124,5 +134,5 @@ make harness    # command-line renderer used for tests
 
 ## Notes
 
-- The saved default lives in `~/Library/Application Support/Framely/defaults.txt`.
+- Presets live in `~/Library/Application Support/Framely/Presets`, the default in `defaults.txt` next to it.
 - Uses the OpenFX SDK 1.5.1 (BSD-3-Clause), vendored in `vendor/openfx` with one small patch (search `FRAMELY PATCH`).
